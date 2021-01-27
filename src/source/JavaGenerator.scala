@@ -306,7 +306,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
         for (f <- r.fields) {
           w.wl
           if(f.ty.resolved.base == MString){
-             w.wl(s"@androidx.annotation.NonNull")
+             w.wl(s"@ch.ubique.libs.net.annotation.NotNull")
           }
           w.wl(s"protected ${marshal.fieldType(f.ty)} ${idJava.field(f.ident)};")
         }
