@@ -320,7 +320,6 @@ template <class T> using CppProxyHandle = JniCppProxyCache::Handle<std::shared_p
 template <class T>
 static const std::shared_ptr<T> & objectFromHandleAddress(jlong handle) {
     assert(handle);
-    assert(handle > 4096);
     // Below line segfaults gcc-4.8. Using a temporary variable hides the bug.
     //const auto & ret = reinterpret_cast<const CppProxyHandle<T> *>(handle)->get();
     const CppProxyHandle<T> *proxy_handle =

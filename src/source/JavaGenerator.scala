@@ -298,14 +298,17 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           interfaces += s"Comparable<$self>"
       if (spec.javaImplementAndroidOsParcelable && r.derivingTypes.contains(DerivingType.AndroidParcelable))
           interfaces += "android.os.Parcelable"
-      val implementsSection = if (interfaces.isEmpty) "" else " implements " + interfaces.mkString(", ")
+      val implementsSection = if (interfaces.isEmpty) " implements java.io.Serializable" else " implements " + interfaces.mkString(", ") + ", java.io.Serializable"
       w.w(s"${javaClassAccessModifierString}${javaFinal}class ${self + javaTypeParams(params)}$implementsSection").braced {
         w.wl
         generateJavaConstants(w, r.consts, false)
         // Field definitions.
         for (f <- r.fields) {
           w.wl
-          w.wl(s"/*package*/ final ${marshal.fieldType(f.ty)} ${idJava.field(f.ident)};")
+          if(f.ty.resolved.base == MString){
+             w.wl(s"@androidx.annotation.NonNull")
+          }
+          w.wl(s"protected ${marshal.fieldType(f.ty)} ${idJava.field(f.ident)};")
         }
 
         // Constructor.
@@ -333,6 +336,16 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           marshal.nullityAnnotation(f.ty).foreach(w.wl)
           w.w("public " + marshal.returnType(Some(f.ty)) + " " + idJava.method("get_" + f.ident.name) + "()").braced {
             w.wl("return " + idJava.field(f.ident) + ";")
+          }
+        }
+
+        // Setters
+        for (f <- r.fields) {
+          w.wl
+          writeDoc(w, f.doc)
+          marshal.nullityAnnotation(f.ty).foreach(w.wl)
+          w.w("public void " + idJava.method("set_" + f.ident.name) + "("+marshal.typename(f.ty)+" "+idJava.field(f.ident)+")").braced {
+            w.wl("this."+idJava.field(f.ident) + " = "+idJava.field(f.ident)+";")
           }
         }
 

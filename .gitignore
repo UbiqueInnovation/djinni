@@ -20,6 +20,9 @@ obj/
 build/
 build_ios/
 
+# example
+example/
+
 # xcode stuff
 project.xcworkspace
 *.xccheckout
@@ -34,3 +37,5 @@ intellij-plugin/djinni.jar
 
 # profiling output
 callgrind.out.*
+
+

@@ -10,7 +10,7 @@ import javax.annotation.Nonnull;
 /*package*/ final class ItemList {
 
 
-    /*package*/ final ArrayList<String> mItems;
+    protected ArrayList<String> mItems;
 
     public ItemList(
             @Nonnull ArrayList<String> items) {
@@ -20,6 +20,11 @@ import javax.annotation.Nonnull;
     @Nonnull
     public ArrayList<String> getItems() {
         return mItems;
+    }
+
+    @Nonnull
+    public void setItems(ArrayList<String> mItems) {
+        this.mItems = mItems;
     }
 
     @Override
