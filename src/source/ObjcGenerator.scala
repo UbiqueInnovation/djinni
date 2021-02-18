@@ -46,7 +46,10 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
   override def generateEnum(origin: String, ident: Ident, doc: Doc, e: Enum) {
     val refs = new ObjcRefs()
 
-    refs.header.add("#import <Foundation/Foundation.h>")
+    spec.ubFoundationHeader match {
+      case Some(foundation) => refs.header.add("#import " + foundation)
+      case None => // nop
+    }
 
     val self = marshal.typename(ident, e)
     writeObjcFile(marshal.headerName(ident), origin, refs.header, w => {
@@ -93,7 +96,10 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
 
     val self = marshal.typename(ident, i)
 
-    refs.header.add("#import <Foundation/Foundation.h>")
+    spec.ubFoundationHeader match {
+      case Some(foundation) => refs.header.add("#import " + foundation)
+      case None => // nop
+    }
 
     def writeObjcFuncDecl(method: Interface.Method, w: IndentWriter) {
       val label = if (method.static) "+" else "-"
@@ -112,6 +118,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       }
       w.wl
       writeDoc(w, doc)
+
       if (i.ext.objc) w.wl(s"@protocol $self") else w.wl(s"@interface $self : NSObject")
       for (m <- i.methods) {
         w.wl
@@ -150,7 +157,11 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     val noBaseSelf = marshal.typename(ident, r) // Used for constant names
     val self = marshal.typename(objcName, r)
 
-    refs.header.add("#import <Foundation/Foundation.h>")
+    spec.ubFoundationHeader match {
+      case Some(foundation) => refs.header.add("#import " + foundation)
+      case None => // nop
+    }
+
     refs.body.add("!#import " + q((if (r.ext.objc) spec.objcExtendedRecordIncludePrefix else spec.objcIncludePrefix) + marshal.headerName(ident)))
 
     if (r.ext.objc) {
@@ -172,7 +183,8 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     // Generate the header file for record
     writeObjcFile(marshal.headerName(objcName), origin, refs.header, w => {
       writeDoc(w, doc)
-      w.wl(s"@interface $self : NSObject")
+      val base = spec.ubObjcRecordBaseClass.getOrElse("NSObject")
+      w.wl(s"@interface $self : $base")
 
       def writeInitializer(sign: String, prefix: String) {
         val decl = s"$sign (nonnull instancetype)$prefix$firstInitializerArg"
@@ -192,8 +204,9 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       for (f <- r.fields) {
         w.wl
         writeDoc(w, f.doc)
+        val readonly = if (spec.ubReadonlyProperties) ", readonly" else ""
         val nullability = marshal.nullability(f.ty.resolved).fold("")(", " + _)
-        w.wl(s"@property (nonatomic, readonly${nullability}) ${marshal.fqFieldType(f.ty)} ${idObjc.field(f.ident)};")
+        w.wl(s"@property (nonatomic$readonly${nullability}) ${marshal.fqFieldType(f.ty)} ${idObjc.field(f.ident)};")
       }
       if (r.derivingTypes.contains(DerivingType.Ord)) {
         w.wl
@@ -404,6 +417,90 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl("];")
       }
       w.wl
+
+      if (spec.ubGenerateSetters) {
+        val methodPrefix = spec.ubMethodPrefix + "_"
+        for (f <- r.fields) {
+          f.ty.resolved.base match {
+            case MBinary => w.wl("")
+            case MList =>
+              f.ty.resolved.args.head.base match {
+              case MBinary => w.wl("")
+              case MList => w.wl("")
+              case MSet => w.wl("")
+              case MMap => w.wl("")
+              case MString => w.wl("")
+              case t: MPrimitive => w.wl("")
+              case df: MDef => df.defType match {
+                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withArray:value];\n}")
+                case DEnum => w.wl("")
+                case _ => w.wl("")
+              }
+              case e: MExtern => e.defType match {
+                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withArray:value];\n}")
+                case DEnum => w.wl("")
+                case _ => w.wl("")
+              }
+              case _ => w.wl("")
+              }
+            case MSet => w.wl("")
+            case MMap => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSDictionary ${methodPrefix}dictionaryOfClass:[${marshal.fqFieldType(f.ty.resolved.args.last).dropRight(1)}class] withDictionary:value];\n}")
+            case MOptional =>
+              f.ty.resolved.args.head.base match {
+              case MBinary => w.wl("")
+              case MList => f.ty.resolved.args.head.args.head.base match {
+                case MBinary => w.wl("")
+                case MList => w.wl("")
+                case MSet => w.wl("")
+                case MMap => w.wl("")
+                case MString => w.wl("")
+                case t: MPrimitive => w.wl("")
+                case df: MDef => df.defType match {
+                  case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
+                  case DEnum => w.wl("")
+                  case _ => w.wl("")
+                }
+                case e: MExtern => e.defType match {
+                  case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
+                  case DEnum => w.wl("")
+                  case _ => w.wl("")
+                }
+                case _ => w.wl("")
+              }
+              case MSet => w.wl("")
+              case MMap => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSDictionary ${methodPrefix}dictionaryOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.last).dropRight(1)}class] withDictionary:value];\n}")
+              case MString => w.wl("")
+              case t: MPrimitive => w.wl("")
+              case df: MDef => df.defType match {
+                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withDictionary:value];\n}")
+                case DEnum => w.wl("")
+                case _ => w.wl("")
+              }
+              case e: MExtern => e.defType match {
+                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withDictionary:value];\n}")
+                case DEnum => w.wl("")
+                case _ => w.wl("")
+              }
+              case _ => w.wl("")
+            }
+
+            case MString => w.wl("")
+            case t: MPrimitive => w.wl("")
+            case df: MDef => df.defType match {
+              case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty).dropRight(1)}class] withDictionary:value];\n}")
+              case DEnum => w.wl("")
+              case _ => w.wl("")
+            }
+
+            case e: MExtern => e.defType match {
+              case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty).dropRight(1)}class] withDictionary:value];\n}")
+              case DEnum => w.wl("")
+              case _ => w.wl("")
+            }
+            case _ => w.wl("")
+          }
+        }
+      }
 
       w.wl("@end")
     })

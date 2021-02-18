@@ -327,7 +327,27 @@ private class DupeChecker(kind: String)
 {
   private val names = mutable.HashMap[String,Loc]()
 
+
+  private val keywords = List(
+//Objective-C
+"auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register",
+"restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Bool", "_Complex", "_Imaginary",
+//NSObject
+"initialize", "load", "init", "copy", "mutableCopy", "superclass", "isSubclass", "instancesRespond", "conforms", "method", "instanceMethod", "autoContentAccessingProxy", "perform", "performSelector", "cancelPreviousPerformRequests", "forwardingTarget", "resolveClassMethod", "resolveInstanceMethod", "doesNotRecognizeSelector", "awakeAfter", "classForArchiver", "isSelectable", "webFrame", "hashValue", "observationInfo", "hash", "className", "classCode", "classDescription", "attributeKeys", "version", 
+//Swift
+"associativity", "catch", "class", "convenience", "deinit", "didSet", "extension", "fallthrough", "final", "func", "get", "guard", "in", "infix", "init", "inout", "internal", "lazy", "let", "mutating",
+"nil", "operator", "override", "postfix", "precedence", "prefix", "private", "public", "repeat", "required", "self", "set", "static", "subscript", "super", "throws", "try", "var", "weak", "where", "willSet",
+//Java
+"abstract", "new", "assert", "package", "synchronized", "this", "implements", "protected", "throw", "byte", "import", "transient", "extends", "short", "finally", "interface", "strictfp", "native",
+//C#/Windows
+"small")
+//"description" would be a NSObject keyword, but we didn't include it in the list, because we need it and ios has to do a workaround
+
   def check(ident: Ident) {
+    if(!kind.equals("method") && !kind.equals("enum option") && keywords.contains(ident.name)){
+    	throw Error(ident.loc, ident.name + " is a keyword and cannot be used as identifier!").toException
+    }
+    
     names.put(ident.name, ident.loc) match {
       case Some(existing) =>
         throw Error(ident.loc, "duplicate " + kind + " \"" + ident.name + "\" (previous definition: " + existing + ")").toException

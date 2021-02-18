@@ -40,6 +40,7 @@ package object generatorTools {
                    javaNonnullAnnotation: Option[String],
                    javaImplementAndroidOsParcelable: Boolean,
                    javaUseFinalForRecord: Boolean,
+                   kotlinOutFolder: Option[File],
                    cppOutFolder: Option[File],
                    cppHeaderOutFolder: Option[File],
                    cppIncludePrefix: String,
@@ -82,6 +83,11 @@ package object generatorTools {
                    objcClosedEnums: Boolean,
                    outFileListWriter: Option[Writer],
                    skipGeneration: Boolean,
+                   ubFoundationHeader: Option[String],
+                   ubGenerateSetters: Boolean,
+                   ubMethodPrefix: String,
+                   ubObjcRecordBaseClass: Option[String],
+                   ubReadonlyProperties: Boolean,
                    yamlOutFolder: Option[File],
                    yamlOutFile: Option[String],
                    yamlPrefix: String)
@@ -199,6 +205,12 @@ package object generatorTools {
           createFolder("Java", spec.javaOutFolder.get)
         }
         new JavaGenerator(spec).generate(idl)
+      }
+      if (spec.kotlinOutFolder.isDefined) {
+        if (!spec.skipGeneration) {
+          createFolder("Kotlin", spec.kotlinOutFolder.get)
+        }
+        new KotlinGenerator(spec).generate(idl)
       }
       if (spec.jniOutFolder.isDefined) {
         if (!spec.skipGeneration) {
