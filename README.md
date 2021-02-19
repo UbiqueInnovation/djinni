@@ -22,6 +22,34 @@ link at the end of this document.
   Objective-C (with Objective-C++).
 - Can autogenerate comparator functions (equality, ordering) on data types.
 
+## Added Features
+- Kotlin code generation support
+- Swift package manager support
+- remove read only property of TXSItemList.h
+- android made records implement java.io.Serializable
+- android added setter to records
+- added more [forbidden keywords](https://github.com/UbiqueInnovation/djinni/blob/feature/ubique-djinni-changes/src/source/resolver.scala#L331)
+- added more options
+  - ub-foundation-header  
+  
+    `Foundation import added to each C++ header file. Format: \"<Foundation/Foundation.h>\" (default: None)`
+  - ub-generate-setters
+
+
+    `Generate custom setters for non-primitive fields in records (default: false).`
+  - ub-method-prefix
+
+
+    `Prefix added to custom methods when generating setters (default: \"ub\").`
+  - ub-objc-record-base-class
+
+
+    `Base class of the generated Objective-C classes`
+  - ub-readonly-properties
+
+
+    `Use readonly properties on records (default: true)`
+
 ## Getting Started
 
 ### Types
