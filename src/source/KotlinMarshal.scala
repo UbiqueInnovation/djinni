@@ -67,7 +67,7 @@ class KotlinMarshal(spec: Spec) extends Marshal(spec) {
             case p: MPrimitive => p.kName
             case MString => "String"
             case MDate => "Date"
-            case MBinary => "Array<Byte>"
+            case MBinary => "ByteArray"
             case MOptional => throw new AssertionError("optional should have been special cased")
             case MList => "ArrayList"
             case MSet => "HashSet"
