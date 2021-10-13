@@ -47,6 +47,7 @@ object Main {
     var javaNonnullAnnotation: Option[String] = None
     var javaImplementAndroidOsParcelable : Boolean = false
     var javaUseFinalForRecord: Boolean = true
+    var kotlinRecordsSerializable: Boolean = false
     var kotlinOutFolder: Option[File] = None
     var jniOutFolder: Option[File] = None
     var jniHeaderOutFolderOptional: Option[File] = None
@@ -129,6 +130,8 @@ object Main {
         .text("all generated java classes will implement the interface android.os.Parcelable")
       opt[Boolean]("java-use-final-for-record").valueName("<use-final-for-record>").foreach(x => javaUseFinalForRecord = x)
         .text("Whether generated Java classes for records should be marked 'final' (default: true). ")
+      opt[Boolean]("kotlin-records-implement-serializable").valueName("<should-implement-serializable>").foreach(x => kotlinRecordsSerializable = x)
+        .text("Whether generated Kotlin classes for records should implement 'java.io.Serializable' (default: false). ")
       note("")
       opt[File]("kotlin-out").valueName("<out-folder>").foreach(x => kotlinOutFolder = Some(x))
         .text("The output for the Kotlin files (Generator disabled if unspecified).")
@@ -335,6 +338,7 @@ object Main {
       javaNonnullAnnotation,
       javaImplementAndroidOsParcelable,
       javaUseFinalForRecord,
+      kotlinRecordsSerializable,
       kotlinOutFolder,
       cppOutFolder,
       cppHeaderOutFolder,
