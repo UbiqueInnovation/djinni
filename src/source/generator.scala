@@ -40,7 +40,7 @@ package object generatorTools {
                    javaNonnullAnnotation: Option[String],
                    javaImplementAndroidOsParcelable: Boolean,
                    javaUseFinalForRecord: Boolean,
-                   javaRecordsSerializable: Boolean,
+                   kotlinRecordsSerializable: Boolean,
                    kotlinOutFolder: Option[File],
                    cppOutFolder: Option[File],
                    cppHeaderOutFolder: Option[File],
