@@ -228,6 +228,8 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
   override def generateRecord(origin: String, ident: Ident, doc: Doc, params: Seq[TypeParam], r: Record) {
     val refs = new JavaRefs()
     r.fields.foreach(f => refs.find(f.ty))
+    if (spec.kotlinRecordsSerializable)
+      refs.java.add(s"java.io.Serializable")
 
     val javaName = if (r.ext.java) (ident.name + "_base") else ident.name
 
@@ -239,6 +241,8 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       val interfaces = scala.collection.mutable.ArrayBuffer[String]()
       if (r.derivingTypes.contains(DerivingType.Ord))
           interfaces += s"Comparable<$self>"
+      if (spec.kotlinRecordsSerializable)
+          interfaces += s"Serializable"
       val implementsSection = if (interfaces.isEmpty) "" else " : " + interfaces.mkString(", ")
       w.wl(s"data class ${self + javaTypeParams(params)}(")
       w.nested {
