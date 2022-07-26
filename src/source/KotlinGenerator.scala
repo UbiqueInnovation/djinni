@@ -276,7 +276,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
             }
 
             w.wl
-            w.w(s"override compareTo($self other): Int").braced {
+            w.w(s"override fun compareTo(other: $self): Int").braced {
               w.wl("var tempResult = 0")
               for (f <- r.fields) {
                 f.ty.resolved.base match {
