@@ -228,6 +228,13 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
   override def generateRecord(origin: String, ident: Ident, doc: Doc, params: Seq[TypeParam], r: Record) {
     val refs = new JavaRefs()
     r.fields.foreach(f => refs.find(f.ty))
+
+    // Imports
+    if (r.derivingTypes.contains(DerivingType.AndroidParcelable)) {
+      refs.java.add(s"android.os.Parcelable")
+      refs.java.add(s"kotlinx.parcelize.Parcelize")
+    }
+
     if (spec.kotlinRecordsSerializable)
       refs.java.add(s"java.io.Serializable")
 
@@ -238,12 +245,24 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       javaAnnotationHeader.foreach(w.wl)
       val self = marshal.typename(javaName, r)
 
+      // Annotations
+      val annotations = scala.collection.mutable.ArrayBuffer[String]()
+      if (r.derivingTypes.contains(DerivingType.AndroidParcelable))
+        annotations += s"@Parcelize"
+
+      annotations.foreach(annotation => w.wl(annotation))
+
+      // Interfaces
       val interfaces = scala.collection.mutable.ArrayBuffer[String]()
       if (r.derivingTypes.contains(DerivingType.Ord))
-          interfaces += s"Comparable<$self>"
+        interfaces += s"Comparable<$self>"
       if (spec.kotlinRecordsSerializable)
-          interfaces += s"Serializable"
+        interfaces += s"Serializable"
+      if (r.derivingTypes.contains(DerivingType.AndroidParcelable))
+        interfaces += s"Parcelable"
       val implementsSection = if (interfaces.isEmpty) "" else " : " + interfaces.mkString(", ")
+
+      // Class definition
       w.wl(s"data class ${self + javaTypeParams(params)}(")
       w.nested {
         for (f <- r.fields) {
@@ -252,6 +271,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       }
       w.w(s")$implementsSection")
 
+      // Class body
       if (r.consts.nonEmpty || r.derivingTypes.contains(DerivingType.Ord)) {
         w.braced {
           if (r.consts.nonEmpty) {
