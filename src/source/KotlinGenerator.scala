@@ -251,6 +251,9 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
     if (spec.kotlinRecordsSerializable)
       refs.java.add(s"java.io.Serializable")
 
+    if (r.derivingTypes.contains(DerivingType.AndroidMoshi))
+      refs.java.add(s"com.squareup.moshi.JsonClass")
+
     val javaName = if (r.ext.java) (ident.name + "_base") else ident.name
 
     writeKotlinFile(javaName, origin, refs.java, w => {
@@ -262,6 +265,9 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       val annotations = scala.collection.mutable.ArrayBuffer[String]()
       if (r.derivingTypes.contains(DerivingType.AndroidParcelable))
         annotations += s"@Parcelize"
+
+      if (r.derivingTypes.contains(DerivingType.AndroidMoshi))
+        annotations += s"@JsonClass(generateAdapter = true)"
 
       annotations.foreach(annotation => w.wl(annotation))
 
