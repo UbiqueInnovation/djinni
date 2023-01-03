@@ -25,12 +25,17 @@ wchar_in="$base_dir/djinni/wchar_test.djinni"
 # to be in git for examination.
 in_relative="djinni/all.djinni"
 wchar_in_relative="djinni/wchar_test.djinni"
+prologue_in_relative="djinni/function_prologue.djinni"
+ident_explicit_in_relative="djinni/ident_explicit.djinni"
+interface_and_abstract_class_in_relative="djinni/interface_and_abstract_class.djinni"
 temp_out_relative="djinni-output-temp"
 
 cpp_out="$base_dir/generated-src/cpp"
 jni_out="$base_dir/generated-src/jni"
 objc_out="$base_dir/generated-src/objc"
 java_out="$base_dir/generated-src/java/com/dropbox/djinni/test"
+wasm_out="$base_dir/generated-src/wasm"
+ts_out="$base_dir/generated-src/ts"
 yaml_out="$base_dir/generated-src/yaml"
 
 java_package="com.dropbox.djinni.test"
@@ -58,7 +63,7 @@ elif [ $# -eq 1 ]; then
 fi
 
 # Build Djinni
-"$base_dir/../src/build"
+"$base_dir/../src/build.sh"
 
 # Run Djinni generation
 [ ! -e "$temp_out" ] || rm -r "$temp_out"
@@ -89,6 +94,11 @@ fi
     --objcpp-out "$temp_out_relative/objc" \
     --objc-type-prefix DB \
     \
+    --wasm-out "$temp_out_relative/wasm" \
+    --wasm-namespace "testsuite" \
+    --ts-out "$temp_out_relative/ts" \
+    --ts-module "test_wchar" \
+    \
     --yaml-out "$temp_out_relative/yaml" \
     --yaml-out-file "yaml-test.yaml" \
     --yaml-prefix "test_" \
@@ -112,12 +122,18 @@ fi
     --cpp-extended-record-include-prefix "../../handwritten-src/cpp/" \
     \
     --jni-out "$temp_out_relative/jni" \
+    --jni-use-on-load-initializer false \
     --ident-jni-class NativeFooBar \
     --ident-jni-file NativeFooBar \
     \
     --objc-out "$temp_out_relative/objc" \
     --objcpp-out "$temp_out_relative/objc" \
     --objc-type-prefix DB \
+    \
+    --wasm-out "$temp_out_relative/wasm" \
+    --wasm-namespace "testsuite" \
+    --ts-out "$temp_out_relative/ts" \
+    --ts-module "test" \
     \
     --list-in-files "./generated-src/inFileList.txt" \
     --list-out-files "./generated-src/outFileList.txt"\
@@ -127,6 +143,95 @@ fi
     --yaml-prefix "test_" \
     \
     --idl "$in_relative" \
+    --idl-include-path "djinni/vendor" && \
+"$base_dir/../src/run-assume-built" \
+    --java-out "$temp_out_relative/java" \
+    --java-package $java_package \
+    --java-nullable-annotation "javax.annotation.CheckForNull" \
+    --java-nonnull-annotation "javax.annotation.Nonnull" \
+    --java-use-final-for-record false \
+    --ident-java-field mFooBar \
+    \
+    --cpp-out "$temp_out_relative/cpp" \
+    --cpp-namespace testsuite \
+    --ident-cpp-enum-type foo_bar \
+    --cpp-optional-template "std::experimental::optional" \
+    --cpp-optional-header "\"../../handwritten-src/cpp/optional.hpp\"" \
+    --cpp-extended-record-include-prefix "../../handwritten-src/cpp/" \
+    \
+    --jni-out "$temp_out_relative/jni" \
+    --ident-jni-class NativeFooBar \
+    --ident-jni-file NativeFooBar \
+    --jni-function-prologue-file "../../handwritten-src/cpp/jni_prologue.hpp" \
+    \
+    --objc-out "$temp_out_relative/objc" \
+    --objcpp-out "$temp_out_relative/objc" \
+    --objc-type-prefix DB \
+    --objcpp-function-prologue-file "../../handwritten-src/cpp/objcpp-prologue.hpp" \
+    \
+    --idl "$prologue_in_relative" && \
+"$base_dir/../src/run-assume-built" \
+    --java-out "$temp_out_relative/java" \
+    --java-package $java_package \
+    --java-nullable-annotation "javax.annotation.CheckForNull" \
+    --java-nonnull-annotation "javax.annotation.Nonnull" \
+    --java-use-final-for-record false \
+    --ident-java-type NativeFooBar! \
+    --ident-java-field mFooBar! \
+    \
+    --cpp-out "$temp_out_relative/cpp" \
+    --cpp-namespace testsuite \
+    --ident-cpp-file foo_bar! \
+    --ident-cpp-enum-type foo_bar! \
+    --cpp-optional-template "std::experimental::optional" \
+    --cpp-optional-header "\"../../handwritten-src/cpp/optional.hpp\"" \
+    --cpp-extended-record-include-prefix "../../handwritten-src/cpp/" \
+    \
+    --jni-out "$temp_out_relative/jni" \
+    --ident-jni-file NativeFooBar! \
+    --ident-jni-class NativeFooBar! \
+    --jni-function-prologue-file "../../handwritten-src/cpp/jni_prologue.hpp" \
+    \
+    --objc-out "$temp_out_relative/objc" \
+    --objcpp-out "$temp_out_relative/objc" \
+    --objc-type-prefix DB \
+    --objcpp-function-prologue-file "../../handwritten-src/cpp/objcpp-prologue.hpp" \
+    --ident-objc-type FooBar! \
+    --ident-objc-enum NativeFooBar! \
+    --ident-objc-const NativeFooBar! \
+    \
+    --idl "$ident_explicit_in_relative" && \
+"$base_dir/../src/run-assume-built" \
+    --java-out "$temp_out_relative/java" \
+    --java-package $java_package \
+    --java-nullable-annotation "javax.annotation.CheckForNull" \
+    --java-nonnull-annotation "javax.annotation.Nonnull" \
+    --java-use-final-for-record false \
+    --java-implement-android-os-parcelable true \
+    --java-gen-interface true \
+    --ident-java-field mFooBar \
+    \
+    --cpp-out "$temp_out_relative/cpp" \
+    --cpp-namespace testsuite \
+    --ident-cpp-enum-type foo_bar \
+    --cpp-optional-template "std::experimental::optional" \
+    --cpp-optional-header "\"../../handwritten-src/cpp/optional.hpp\"" \
+    --cpp-extended-record-include-prefix "../../handwritten-src/cpp/" \
+    \
+    --jni-out "$temp_out_relative/jni" \
+    --jni-use-on-load-initializer false \
+    --ident-jni-class NativeFooBar \
+    --ident-jni-file NativeFooBar \
+    \
+    --objc-out "$temp_out_relative/objc" \
+    --objcpp-out "$temp_out_relative/objc" \
+    --objc-type-prefix DB \
+    \
+    --yaml-out "$temp_out_relative/yaml" \
+    --yaml-out-file "yaml-interface-test.yaml" \
+    --yaml-prefix "test_" \
+    \
+    --idl "$interface_and_abstract_class_in_relative" \
     --idl-include-path "djinni/vendor" \
 )
 
@@ -145,12 +250,18 @@ cp "$base_dir/djinni/yaml-test.djinni" "$temp_out/yaml"
     --cpp-optional-header "\"../../handwritten-src/cpp/optional.hpp\"" \
     \
     --jni-out "$temp_out_relative/jni" \
+    --jni-use-on-load-initializer false \
     --ident-jni-class NativeFooBar \
     --ident-jni-file NativeFooBar \
     \
     --objc-out "$temp_out_relative/objc" \
     --objcpp-out "$temp_out_relative/objc" \
     --objc-type-prefix DB \
+    \
+    --wasm-out "$temp_out_relative/wasm" \
+    --wasm-namespace "testsuite" \
+    --ts-out "$temp_out_relative/ts" \
+    --ts-module "test_yaml" \
     \
     --idl "$temp_out_relative/yaml/yaml-test.djinni" \
 )
@@ -170,6 +281,8 @@ mirror "cpp" "$temp_out/cpp" "$cpp_out"
 mirror "java" "$temp_out/java" "$java_out"
 mirror "jni" "$temp_out/jni" "$jni_out"
 mirror "objc" "$temp_out/objc" "$objc_out"
+mirror "wasm" "$temp_out/wasm" "$wasm_out"
+mirror "ts" "$temp_out/ts" "$ts_out"
 
 date > "$gen_stamp"
 

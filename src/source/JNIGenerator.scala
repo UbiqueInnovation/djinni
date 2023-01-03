@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
@@ -152,7 +154,8 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           w.wl(",")
           writeAlignedCall(w, " " * call.length(), r.fields, ")}", f => {
             val name = idCpp.field(f.ident)
-            val param = jniMarshal.fromCpp(f.ty, s"c.$name")
+            val param = jniMarshal.fromCpp(f.ty,
+              cppMarshal.maybeMove(s"c.$name", f.ty))
             s"::djinni::get($param)"
           })
         }
@@ -184,6 +187,10 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
 
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
     val refs = new JNIRefs(ident.name)
+
+    // Add user include file if defined
+    spec.jniFunctionPrologueFile.foreach(x=>refs.jniCpp.add("#include " + q(x)))
+
     i.methods.foreach(m => {
       m.params.foreach(p => refs.find(p.ty))
       m.ret.foreach(refs.find)
@@ -257,6 +264,14 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           }
         }
       }
+
+      if (spec.jniUseOnLoad && i.ext.cpp) {
+        val (static, proxy) = i.methods.partition(m => m.static)
+        w.wl(s"extern const JNINativeMethod ${jniSelf}ProxyRecords[${proxy.size + 1}];")
+        if (static.nonEmpty) {
+          w.wl(s"extern const JNINativeMethod ${jniSelf}StaticRecords[${static.size}];")
+        }
+      }
     }
 
     def writeJniBody(w: IndentWriter) {
@@ -282,17 +297,19 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           writeJniTypeParams(w, typeParams)
           val methodNameAndSignature: String = s"${idCpp.method(m.ident)}${params.mkString("(", ", ", ")")}"
           w.w(s"$ret $jniSelfWithParams::JavaProxy::$methodNameAndSignature").braced {
+            val javaMethodName = idJava.method(m.ident)
+            spec.jniFunctionPrologueFile.foreach(x=>w.wl(s"""DJINNI_FUNCTION_PROLOGUE("${ident.name}.${javaMethodName}");"""))
             w.wl(s"auto jniEnv = ::djinni::jniGetThreadEnv();")
             w.wl(s"::djinni::JniLocalScope jscope(jniEnv, 10);")
             w.wl(s"const auto& data = ::djinni::JniClass<${withNs(Some(spec.jniNamespace), jniSelf)}>::get();")
             val call = m.ret.fold("jniEnv->CallVoidMethod(")(r => "auto jret = " + toJniCall(r, (jt: String) => s"jniEnv->Call${jt}Method("))
             w.w(call)
-            val javaMethodName = idJava.method(m.ident)
             w.w(s"Handle::get().get(), data.method_$javaMethodName")
             if(m.params.nonEmpty){
               w.wl(",")
               writeAlignedCall(w, " " * call.length(), m.params, ")", p => {
-                val param = jniMarshal.fromCpp(p.ty, "c_" + idCpp.local(p.ident))
+                val param = jniMarshal.fromCpp(p.ty,
+                  cppMarshal.maybeMove("c_" + idCpp.local(p.ident), p.ty))
                 s"::djinni::get($param)"
               })
             }
@@ -323,24 +340,36 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           .replaceAllLiterally("_", "_1")
           .replaceAllLiterally(".", "_")
         val prefix = "Java_" + classIdentMunged
+
+        def methodName(name: String, static: Boolean): String = {
+          val methodNameMunged = name.replaceAllLiterally("_", "_1")
+
+          if (static)
+            s"${prefix}_$methodNameMunged"
+          else
+            s"${prefix}_00024CppProxy_$methodNameMunged"
+        }
+
         def nativeHook(name: String, static: Boolean, params: Iterable[Field], ret: Option[TypeRef], f: => Unit) = {
           val paramList = params.map(p => jniMarshal.paramType(p.ty) + " j_" + idJava.local(p.ident)).mkString(", ")
           val jniRetType = jniMarshal.fqReturnType(ret)
           w.wl
-          val methodNameMunged = name.replaceAllLiterally("_", "_1")
           val zero = ret.fold("")(s => "0 /* value doesn't matter */")
+          // if we use OnLoad for method registration we don't want to export the functions
+          val export = if (spec.jniUseOnLoad) "static" else "CJNIEXPORT"
+
           if (static) {
-            w.wl(s"CJNIEXPORT $jniRetType JNICALL ${prefix}_00024CppProxy_$methodNameMunged(JNIEnv* jniEnv, jobject /*this*/${preComma(paramList)})").braced {
+            w.wl(s"$export $jniRetType JNICALL ${methodName(name, static)}(JNIEnv* jniEnv, jobject /*this*/${preComma(paramList)})").braced {
               w.w("try").bracedEnd(s" JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, $zero)") {
-                w.wl(s"DJINNI_FUNCTION_PROLOGUE0(jniEnv);")
+                spec.jniFunctionPrologueFile.foreach(x=>w.wl(s"""DJINNI_FUNCTION_PROLOGUE("${ident.name}.${name}");"""))
                 f
               }
             }
           }
           else {
-            w.wl(s"CJNIEXPORT $jniRetType JNICALL ${prefix}_00024CppProxy_$methodNameMunged(JNIEnv* jniEnv, jobject /*this*/, jlong nativeRef${preComma(paramList)})").braced {
+            w.wl(s"$export $jniRetType JNICALL ${methodName(name, static)}(JNIEnv* jniEnv, jobject /*this*/, jlong nativeRef${preComma(paramList)})").braced {
               w.w("try").bracedEnd(s" JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, $zero)") {
-                w.wl(s"DJINNI_FUNCTION_PROLOGUE1(jniEnv, nativeRef);")
+                spec.jniFunctionPrologueFile.foreach(x=>w.wl(s"""DJINNI_FUNCTION_PROLOGUE("${ident.name}.${name}");"""))
                 f
               }
             }
@@ -349,7 +378,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         nativeHook("nativeDestroy", false, Seq.empty, None, {
           w.wl(s"delete reinterpret_cast<::djinni::CppProxyHandle<$cppSelf>*>(nativeRef);")
         })
-        for (m <- i.methods) {
+        for (m <- i.methods.filter(m => !m.static || m.lang.java)) {
           val nativeAddon = if (m.static) "" else "native_"
           nativeHook(nativeAddon + idJava.method(m.ident), m.static, m.params, m.ret, {
             //w.wl(s"::${spec.jniNamespace}::JniLocalScope jscope(jniEnv, 10);")
@@ -370,13 +399,88 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
             val call = if (m.static) s"$cppSelf::$methodName(" else s"ref->$methodName("
             writeAlignedCall(w, ret + call, m.params, ")", p => jniMarshal.toCpp(p.ty, "j_" + idJava.local(p.ident)))
             w.wl(";")
-            m.ret.fold()(r => w.wl(s"return ::djinni::release(${jniMarshal.fromCpp(r, "r")});"))
+            m.ret.fold()(r => w.wl(s"return ::djinni::release(${jniMarshal.fromCpp(r, cppMarshal.maybeMove("r", r))});"))
           })
+        }
+
+        def jniNativeMethod(javaMethodName: String, javaSignature: String, pointer: String) : String = {
+          // this const cast is a hack because JNINativeMethod in openjdk8 I(chancila) used for testing
+          // does not declare the members as const char*
+          s"const_cast<char*>(${q(javaMethodName)}), const_cast<char*>(${q(javaSignature)}), reinterpret_cast<void*>($pointer),"
+        }
+
+        def nativeMethodRecord(isStaticRecord: Boolean, proxyMethods: Seq[Interface.Method]): Unit = {
+          val identifier = jniSelf + (if (isStaticRecord) "Static" else "Proxy") + "Records"
+
+          w.wl(s"const JNINativeMethod $identifier[] = ").bracedSemi {
+            if (!isStaticRecord) {
+              w.bracedEnd(",") {
+                w.wl(jniNativeMethod("nativeDestroy", "(J)V", methodName("nativeDestroy", false)))
+              }
+            }
+            for (m <- proxyMethods) {
+              val nativeAddon = if (m.static) "" else "native_"
+              val javaName = nativeAddon + idJava.method(m.ident)
+              val functionName = methodName(javaName, m.static)
+              w.bracedEnd(",") {
+                var signature = jniMarshal.javaMethodSignature(m.params, m.ret)
+                // all non-static methods have an implicit long argument for the c++ pointer
+                // that isn't added by javaMethodSignature
+                if (!isStaticRecord) {
+                  signature = signature.replaceFirst("\\(", "(J")
+                }
+                w.wl(jniNativeMethod(nativeAddon + idJava.method(m.ident), signature, functionName))
+              }
+            }
+          }
+        }
+
+        if (spec.jniUseOnLoad) {
+          val (staticMethods, proxyMethods) = i.methods.partition(x => x.static)
+          nativeMethodRecord(false, proxyMethods)
+          if (staticMethods.nonEmpty) {
+            nativeMethodRecord(true, staticMethods)
+          }
         }
       }
     }
 
     writeJniFiles(origin, typeParams.nonEmpty, ident, refs, writeJniPrototype, writeJniBody)
+  }
+
+  override def generateModule(decls: Seq[InternTypeDecl]): Unit = {
+    if (!spec.jniUseOnLoad) {
+      return
+    }
+
+    val moduleName = spec.cppIdentStyle.ty(spec.moduleName + "Module")
+    val moduleNameJava = spec.javaIdentStyle.ty(spec.moduleName + "Module")
+
+    val includes = s"#include ${q(spec.jniBaseLibIncludePrefix + "djinni_support.hpp")}" :: decls.map(td => s"#include ${q(spec.jniFileIdentStyle(td.ident) + "." + spec.cppHeaderExt)}").toList
+
+    writeJniHppFile(moduleName, "MODULE", List.empty, List.empty, w => {
+    })
+    writeJniCppFile(moduleName, "MODULE", includes, w => {
+      w.wl("static void registerModuleNatives(JNIEnv* env, jclass clazz)").braced {
+        for (ty <- decls.filter(ty => ty.body.asInstanceOf[Interface].ext.cpp)) {
+          val i = ty.body.asInstanceOf[Interface]
+          val (statics, proxys) = i.methods.partition(i => i.static)
+
+          w.wl(s"djinni::jniRegisterNatives(env, ${q(jniMarshal.undecoratedTypename(ty.ident, ty.body) + "$CppProxy")}, ${jniMarshal.helperClass(ty.ident)}ProxyRecords);")
+          if (statics.nonEmpty) {
+            w.wl(s"djinni::jniRegisterNatives(env, ${q(jniMarshal.undecoratedTypename(ty.ident, ty.body))}, ${jniMarshal.helperClass(ty.ident)}StaticRecords);")
+          }
+        }
+      }
+      w.wl("static const JNINativeMethod moduleMethod[1] = ").bracedSemi {
+        w.braced {
+          w.wl((s"const_cast<char*>(${q("initialize")}), const_cast<char*>(${q("()V")}), reinterpret_cast<void*>(registerModuleNatives)"))
+        }
+      }
+      val guardName = moduleNameJava + "$Guard"
+      val moduleJavaFqn = spec.javaPackage.fold(guardName)(p => p.replaceAllLiterally(".", "/") + "/" + guardName)
+      w.wl(s"static djinni::JNIMethodLoadAutoRegister moduleLoader(${q(moduleJavaFqn)}, moduleMethod);")
+    })
   }
 
   def writeJniFiles(origin: String, allInHeader: Boolean, ident: Ident, refs: JNIRefs, writeProto: IndentWriter => Unit, writeBody: IndentWriter => Unit) {

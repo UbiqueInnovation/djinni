@@ -1,3 +1,9 @@
+@extern "../../support-lib/future.yaml"
+
+async_interface = interface +j +o +w {
+  future_roundtrip(f: future<i32>): future<string>;
+}
+
 # Helper methods used by various different tests.
 # (Second line of multi-line documentation.
 #   Indented third line of multi-line documentation.)
@@ -29,7 +35,7 @@ test_helpers = interface +c {
     static check_enum_map(m: map<color, string>);
     static check_enum(c: color);
 
-    static token_id(t: user_token): user_token;
+    static token_id(t: optional<user_token>): optional<user_token>;
     static create_cpp_token(): user_token;
     static check_cpp_token(t: user_token);
     static cpp_token_id(t: user_token): i64;
@@ -41,6 +47,24 @@ test_helpers = interface +c {
     static assorted_primitives_id(i: assorted_primitives): assorted_primitives;
 
     static id_binary(b: binary): binary;
+
+    static get_async_result(): future<i32>;
+    static future_roundtrip(f: future<i32>): future<string>;
+    static async_early_throw(): future<i32>;
+    static void_async_method(f: future<void>): future<void>;
+    # If the input is empty, returns back an empty future.
+    # If the input is non-empty, returns back the value plus one.
+    static add_one_if_present(f: future<optional<i32>>): future<optional<i32>>;
+
+    static check_async_interface(i: async_interface): future<string>;
+    static check_async_composition(i: async_interface): future<string>;
+
+    static get_optional_list(): list<optional<string>>;
+    static check_optional_list(ol: list<optional<string>>): bool;
+    static get_optional_set(): set<optional<string>>;
+    static check_optional_set(os: set<optional<string>>): bool;
+    static get_optional_map(): map<optional<string>, optional<string>>;
+    static check_optional_map(om: map<optional<string>, optional<string>>): bool;
 }
 
 # Empty record

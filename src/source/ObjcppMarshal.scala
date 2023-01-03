@@ -1,3 +1,21 @@
+/**
+  * Copyright 2014 Dropbox, Inc.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *    http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
+  */
+
 package djinni
 
 import djinni.ast._
@@ -33,6 +51,10 @@ class ObjcppMarshal(spec: Spec) extends Marshal(spec) {
   def references(m: Meta): Seq[SymbolReference] = m match {
     case o: MOpaque =>
       List(ImportRef(q(spec.objcBaseLibIncludePrefix + "DJIMarshal+Private.h")))
+    case p: MProtobuf => p.body.objc match {
+      case Some(o) => List(ImportRef(q(spec.objcBaseLibIncludePrefix + "DJIMarshal+Private.h")), ImportRef(o.header))
+      case None => List(ImportRef(q(spec.objcBaseLibIncludePrefix + "DJIMarshal+Private.h")))
+    }
     case d: MDef => d.defType match {
       case DEnum | DInterface =>
         List(ImportRef(include(m)))
@@ -41,8 +63,12 @@ class ObjcppMarshal(spec: Spec) extends Marshal(spec) {
         val objcName = d.name + (if (r.ext.objc) "_base" else "")
         List(ImportRef(q(spec.objcppIncludePrefix + privateHeaderName(objcName))))
     }
-    case e: MExtern => List(ImportRef(e.objcpp.header))
+    case e: MExtern => List(ImportRef(resolveExtObjcppHdr(e.objcpp.header)))
     case p: MParam => List()
+  }
+
+  def resolveExtObjcppHdr(path: String) = {
+    path.replaceAll("\\$", spec.objcBaseLibIncludePrefix);
   }
 
   def include(m: Meta) = m match {
@@ -63,6 +89,15 @@ class ObjcppMarshal(spec: Spec) extends Marshal(spec) {
       case _ => withNs(Some(spec.objcppNamespace), helperClass(d.name))
     }
     case e: MExtern => e.objcpp.translator
+    case p: MProtobuf => p.body.objc match {
+      // We generate a template here rather than in helperTemplates() because this
+      // is not a parameterized type in Djinni IDL
+      case Some(o) => withNs(Some("djinni"), "Protobuf") + "<" +
+        withNs(Some(p.body.cpp.ns), p.name) + ", " + o.prefix + p.name + ">"
+      //Use the passthrough translator when in C++ proto mode
+      case None => withNs(Some("djinni"), "ProtobufPassthrough") + "<" +
+        withNs(Some(p.body.cpp.ns), p.name) + ">"
+    }
     case o => withNs(Some("djinni"), o match {
       case p: MPrimitive => p.idlName match {
         case "i8" => "I8"
@@ -80,9 +115,12 @@ class ObjcppMarshal(spec: Spec) extends Marshal(spec) {
       case MList => "List"
       case MSet => "Set"
       case MMap => "Map"
+      case MArray => "Array"
       case d: MDef => throw new AssertionError("unreachable")
       case e: MExtern => throw new AssertionError("unreachable")
       case p: MParam => throw new AssertionError("not applicable")
+      case p: MProtobuf => throw new AssertionError("not applicable")
+      case MVoid => "Void"
     })
   }
 
@@ -93,11 +131,8 @@ class ObjcppMarshal(spec: Spec) extends Marshal(spec) {
         assert(tm.args.size == 1)
         val argHelperClass = helperClass(tm.args.head)
         s"<${spec.cppOptionalTemplate}, $argHelperClass>"
-      case MList | MSet =>
+      case MList | MSet | MArray =>
         assert(tm.args.size == 1)
-        f
-      case MMap =>
-        assert(tm.args.size == 2)
         f
       case _ => f
     }

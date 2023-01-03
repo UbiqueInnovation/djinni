@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+// This file has been modified by Snap, Inc.
+//
 
 #pragma once
 
@@ -101,22 +103,49 @@ public:
      * Erase an object from the proxy cache.
      */
     void remove(const std::type_index & tag, const UnowningImplPointer & impl_unowning) {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        auto it = m_mapping.find({tag, impl_unowning});
-        if (it != m_mapping.end()) {
-            // The entry in the map should already be expired: this is called from Handle's
-            // destructor, so the proxy must already be gone. However, remove() does not
-            // happen atomically with the proxy object becoming weakly reachable. It's
-            // possible that during the window between when the weak-ref holding this proxy
-            // expires and when we enter remove() and take m_mutex, another thread could have
-            // created a new proxy for the same original object and added it to the map. In
-            // that case, `it->second` will contain a live pointer to a different proxy object,
-            // not an expired weak pointer to the Handle currently being destructed. We only
-            // remove the map entry if its pointer is already expired.
-            if (is_expired(it->second)) {
-                m_mapping.erase(it);
+        // Normally the entry in the map should already be expired: this is
+        // called from Handle's destructor, so the proxy must already be gone.
+        // 
+        // However, remove() does not happen atomically with the proxy object
+        // becoming weakly reachable. It's possible that during the window
+        // between when the weak-ref holding this proxy expires and when we
+        // enter remove() and take m_mutex, another thread could have created a
+        // new proxy for the same original object and added it to the map.
+        // 
+        // In that case, `it->second` will contain a live pointer to a different
+        // proxy object, not an expired weak pointer to the Handle currently
+        // being destructed. We only remove the map entry if its pointer is
+        // already expired.
+        //
+        // Since the is_expired() test could potentially acquire the ownership
+        // temporarily and result in destructing the proxy object with the mutex
+        // already held.  We store a strong ref to the new object outside of the
+        // mutex scope so that in case we are left with the last reference to
+        // the new proxy object, the destruction will happen outside of the
+        // mutex
+        OwningProxyPointer temp_ptr_holder;
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            auto it = m_mapping.find({tag, impl_unowning});
+            if (it != m_mapping.end()) {
+                temp_ptr_holder = upgrade_weak(it->second);
+                if (is_expired(it->second)) {
+                    m_mapping.erase(it);
+                }
             }
         }
+    }
+
+    std::unordered_map<const char*, size_t> stats() {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        std::unordered_map<const char*, size_t> result;
+        for (const auto& entry: m_mapping) {
+            // Just use the mangled name here because demangling requires
+            // allocation.
+            const auto* mangled_type_name = entry.first.first.name();
+            result[mangled_type_name]++;
+        }
+        return result;
     }
 
 private:
@@ -172,5 +201,11 @@ auto ProxyCache<Traits>::get(const std::type_index & tag,
         -> OwningProxyPointer {
     return get_base()->get(tag, impl, alloc);
 }
+
+template<typename Traits>
+std::unordered_map<const char*, size_t> ProxyCache<Traits>::stats() {
+    return get_base()->stats();
+}
+
 
 } // namespace djinni

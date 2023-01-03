@@ -1,3 +1,21 @@
+/**
+  * Copyright 2014 Dropbox, Inc.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *    http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
+  */
+
 package djinni
 
 import djinni.ast._
@@ -8,7 +26,10 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
 
   // For JNI typename() is always fully qualified and describes the mangled Java type to be used in field/method signatures
   override def typename(tm: MExpr): String = javaTypeSignature(tm)
-  def typename(name: String, ty: TypeDef) = s"L${undecoratedTypename(name, ty)};"
+  def typename(name: String, ty: TypeDef) = ty match {
+    case e: Enum if e.flags => "Ljava/util/EnumSet;"
+    case _ => s"L${undecoratedTypename(name, ty)};"
+  }
 
   override def fqTypename(tm: MExpr): String = typename(tm)
   def fqTypename(name: String, ty: TypeDef): String = typename(name, ty)
@@ -35,9 +56,20 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
 
   def references(m: Meta, exclude: String = ""): Seq[SymbolReference] = m match {
     case o: MOpaque => List(ImportRef(q(spec.jniBaseLibIncludePrefix + "Marshal.hpp")))
+    case p: MProtobuf => {
+      val headers = List(ImportRef(q(spec.jniBaseLibIncludePrefix + "Marshal.hpp")))
+      p.body.java.jniHeader match {
+        case Some(serialzerHeader) => ImportRef(serialzerHeader) :: headers
+        case _ => headers
+      }
+    }
     case d: MDef => List(ImportRef(include(d.name)))
-    case e: MExtern => List(ImportRef(e.jni.header))
+    case e: MExtern => List(ImportRef(resolveExtJniHdr(e.jni.header)))
     case _ => List()
+  }
+
+  def resolveExtJniHdr(path: String) = {
+    path.replaceAll("\\$", spec.jniBaseLibIncludePrefix);
   }
 
   def include(ident: String) = q(spec.jniIncludePrefix + spec.jniFileIdentStyle(ident) + "." + spec.cppHeaderExt)
@@ -73,6 +105,8 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
       case MList => "Ljava/util/ArrayList;"
       case MSet => "Ljava/util/HashSet;"
       case MMap => "Ljava/util/HashMap;"
+      case MArray => s"[${javaTypeSignature(tm.args.head)}"
+      case MVoid => "Ljava/lang/Void;"
     }
     case e: MExtern => e.jni.typeSignature
     case MParam(_) => "Ljava/lang/Object;"
@@ -80,10 +114,30 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
       case e: Enum if e.flags => "Ljava/util/EnumSet;"
       case _ => s"L${undecoratedTypename(d.name, d.body)};"
     }
+    case p: MProtobuf => {
+      val prefix = p.body.java.pkg.replaceAllLiterally(".", "/")
+      s"L${prefix}$$${p.name};"
+    }
+  }
+
+  // Regexp shortcut
+  implicit class RegexOps(sc: StringContext) {
+    def r = new util.matching.Regex(sc.parts.mkString, sc.parts.tail.map(_ => "x"): _*)
+  }
+  // If class is an object type, return the type signature without the prefixing "L" and trailing ";"
+  // Otherwise return type signature.  This is the form JNI FindClass() function expects.
+  private def javaClassNameForFindClass(tm: MExpr): String = javaTypeSignature(tm) match {
+    case r"^L(.*)${cls};$$" => cls  // starts with L and ends with ;
+    case default => default         // otherwise
   }
 
   def javaMethodSignature(params: Iterable[Field], ret: Option[TypeRef]) = {
     params.map(f => typename(f.ty)).mkString("(", "", ")") + ret.fold("V")(typename)
+  }
+
+  def javaClassNameAsCppType(fqJavaClass: String): String = {
+    val classNameChars = fqJavaClass.toList.map(c => s"'$c'")
+    s"""::djinni::JavaClassName<${classNameChars.mkString(",")}>"""
   }
 
   def helperName(tm: MExpr): String = tm.base match {
@@ -106,9 +160,12 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
       case MList => "List"
       case MSet => "Set"
       case MMap => "Map"
+      case MProtobuf(_,_,_) => "Protobuf"
+      case MArray => "Array"
       case d: MDef => throw new AssertionError("unreachable")
       case e: MExtern => throw new AssertionError("unreachable")
       case p: MParam => throw new AssertionError("not applicable")
+      case MVoid => "Void"
     })
   }
 
@@ -126,6 +183,17 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
       case MMap =>
         assert(tm.args.size == 2)
         f
+      case p: MProtobuf =>
+        assert(tm.args.size == 0)
+        val fqJavaProtoClass = p.body.java.pkg.replaceAllLiterally(".", "/") + "$" + p.name
+        val serializerClass = p.body.java.jniClass match {
+          case Some(serializer) => s", ${serializer}"
+          case None => ""
+        }
+        s"""<${withNs(Some(p.body.cpp.ns), p.name)}, ${javaClassNameAsCppType(fqJavaProtoClass)}${serializerClass}>"""
+      case MArray =>
+        assert(tm.args.size == 1)
+        s"""<${helperClass(tm.args.head)}, ${javaClassNameAsCppType(javaClassNameForFindClass(tm.args.head))}>"""
       case _ => f
     }
   }

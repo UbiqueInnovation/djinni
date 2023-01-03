@@ -6,14 +6,15 @@ extern_record_with_derivings = record
 {
 	member: test_record_with_derivings;
 	e: test_color;
-} deriving(eq, ord, parcelable)
+} deriving(eq, ord)
 
 extern_interface_1 = interface +c
 {
-	foo(i: test_client_interface): test_client_returned_record;
+    foo(i: test_client_interface): test_client_returned_record;
+    bar(e: test_color): test_color;
 }
 
-extern_interface_2 = interface +j +o
+extern_interface_2 = interface +j +o +w
 {
 	foo(i: test_test_helpers): extern_record_with_derivings;
 }

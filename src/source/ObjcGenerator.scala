@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
@@ -46,16 +48,13 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
   override def generateEnum(origin: String, ident: Ident, doc: Doc, e: Enum) {
     val refs = new ObjcRefs()
 
-    spec.ubFoundationHeader match {
-      case Some(foundation) => refs.header.add("#import " + foundation)
-      case None => // nop
-    }
+    refs.header.add("#import <Foundation/Foundation.h>")
 
     val self = marshal.typename(ident, e)
     writeObjcFile(marshal.headerName(ident), origin, refs.header, w => {
       writeDoc(w, doc)
       w.wl(if(e.flags) {
-        s"typedef NS_OPTIONS(NSUInteger, $self)"
+        s"typedef NS_OPTIONS(NSInteger, $self)"
       } else {
         if (spec.objcClosedEnums) {
           s"typedef NS_CLOSED_ENUM(NSInteger, $self)"
@@ -96,16 +95,33 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
 
     val self = marshal.typename(ident, i)
 
-    spec.ubFoundationHeader match {
-      case Some(foundation) => refs.header.add("#import " + foundation)
-      case None => // nop
-    }
+    refs.header.add("#import <Foundation/Foundation.h>")
 
     def writeObjcFuncDecl(method: Interface.Method, w: IndentWriter) {
       val label = if (method.static) "+" else "-"
       val ret = marshal.returnType(method.ret)
       val decl = s"$label ($ret)${idObjc.method(method.ident)}"
       writeAlignedObjcCall(w, decl, method.params, "", p => (idObjc.field(p.ident), s"(${marshal.paramType(p.ty)})${idObjc.local(p.ident)}"))
+    }
+
+    // Generate the header file for protocol implementation (--objc-gen-protocol = true)
+    if (!i.ext.objc && spec.objcGenProtocol) {
+      if(i.methods.exists(_.static)) {
+        val protocolHeader = "#import " + q(spec.objcIncludePrefix + marshal.headerName(ident))
+        writeObjcFile(marshal.implHeaderName(ident), origin, List(protocolHeader), w => {
+          w.wl(s"@interface $self : NSObject<$self>")
+          for (m <- i.methods) {
+            if (m.static && m.lang.objc) {
+              w.wl
+              writeMethodDoc(w, m, idObjc.local)
+              writeObjcFuncDecl(m, w)
+              w.wl(";")
+            }
+          }
+          w.wl
+          w.wl("@end")
+        })
+      }
     }
 
     // Generate the header file for Interface
@@ -116,15 +132,23 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         writeObjcConstVariableDecl(w, c, self)
         w.wl(s";")
       }
+
       w.wl
       writeDoc(w, doc)
+      if (useProtocol(i.ext, spec)) {
+        val baseProtocol = if (spec.objcStrictProtocol) " <NSObject>" else ""
+        w.wl(s"@protocol $self$baseProtocol")
+      } else {
+        w.wl(s"@interface $self : NSObject")
+      }
 
-      if (i.ext.objc) w.wl(s"@protocol $self") else w.wl(s"@interface $self : NSObject")
       for (m <- i.methods) {
-        w.wl
-        writeMethodDoc(w, m, idObjc.local)
-        writeObjcFuncDecl(m, w)
-        w.wl(";")
+        if (!m.static || (!spec.objcGenProtocol && m.lang.objc)) {
+          w.wl
+          writeMethodDoc(w, m, idObjc.local)
+          writeObjcFuncDecl(m, w)
+          w.wl(";")
+        }
       }
       for (c <- i.consts if !marshal.canBeConstVariable(c)) {
         w.wl
@@ -157,11 +181,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     val noBaseSelf = marshal.typename(ident, r) // Used for constant names
     val self = marshal.typename(objcName, r)
 
-    spec.ubFoundationHeader match {
-      case Some(foundation) => refs.header.add("#import " + foundation)
-      case None => // nop
-    }
-
+    refs.header.add("#import <Foundation/Foundation.h>")
     refs.body.add("!#import " + q((if (r.ext.objc) spec.objcExtendedRecordIncludePrefix else spec.objcIncludePrefix) + marshal.headerName(ident)))
 
     if (r.ext.objc) {
@@ -171,7 +191,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     def checkMutable(tm: MExpr): Boolean = tm.base match {
       case MOptional => checkMutable(tm.args.head)
       case MString => true
-      case MList => true
+      case MList | MArray => true
       case MSet => true
       case MMap => true
       case MBinary => true
@@ -183,17 +203,33 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     // Generate the header file for record
     writeObjcFile(marshal.headerName(objcName), origin, refs.header, w => {
       writeDoc(w, doc)
-      val base = spec.ubObjcRecordBaseClass.getOrElse("NSObject")
-      w.wl(s"@interface $self : $base")
+
+      if (r.derivingTypes.contains(DerivingType.NSCopying)) {
+        w.wl(s"@interface $self : NSObject<NSCopying>")
+      } else {
+        w.wl(s"@interface $self : NSObject")
+      }
 
       def writeInitializer(sign: String, prefix: String) {
         val decl = s"$sign (nonnull instancetype)$prefix$firstInitializerArg"
         writeAlignedObjcCall(w, decl, r.fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
-        w.wl(";")
+
+        if (prefix == "init") {
+          w.wl(" NS_DESIGNATED_INITIALIZER;")
+        } else {
+          w.wl(";")
+        }
+      }
+
+      if (r.fields.nonEmpty) {
+          // NSObject init / new are marked unavailable. Only allow designated initializer
+          // as records may have non-optional / nonnull fields.
+          w.wl("- (nonnull instancetype)init NS_UNAVAILABLE;")
+          w.wl("+ (nonnull instancetype)new NS_UNAVAILABLE;")
       }
 
       writeInitializer("-", "init")
-      if (!r.ext.objc) writeInitializer("+", IdentStyle.camelLower(objcName))
+      if (!r.ext.objc && !spec.objcDisableClassCtor) writeInitializer("+", IdentStyle.camelLower(objcName))
 
       for (c <- r.consts if !marshal.canBeConstVariable(c)) {
         w.wl
@@ -204,9 +240,8 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       for (f <- r.fields) {
         w.wl
         writeDoc(w, f.doc)
-        val readonly = if (spec.ubReadonlyProperties) ", readonly" else ""
         val nullability = marshal.nullability(f.ty.resolved).fold("")(", " + _)
-        w.wl(s"@property (nonatomic$readonly${nullability}) ${marshal.fqFieldType(f.ty)} ${idObjc.field(f.ident)};")
+        w.wl(s"@property (nonatomic, readonly${nullability}) ${marshal.fqFieldType(f.ty)} ${idObjc.field(f.ident)};")
       }
       if (r.derivingTypes.contains(DerivingType.Ord)) {
         w.wl
@@ -251,12 +286,12 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       w.wl
 
       // Convenience initializer
-      if(!r.ext.objc) {
+      if(!r.ext.objc && !spec.objcDisableClassCtor) {
         val decl = s"+ (nonnull instancetype)${IdentStyle.camelLower(objcName)}$firstInitializerArg"
         writeAlignedObjcCall(w, decl, r.fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
         w.wl
         w.braced {
-          val call = s"return [($self*)[self alloc] init$firstInitializerArg"
+          val call = s"return [[self alloc] init$firstInitializerArg"
           writeAlignedObjcCall(w, call, r.fields, "", f => (idObjc.field(f.ident), s"${idObjc.local(f.ident)}"))
           w.wl("];")
         }
@@ -278,7 +313,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
               skipFirst { w.wl(" &&") }
               f.ty.resolved.base match {
                 case MBinary => w.w(s"[self.${idObjc.field(f.ident)} isEqualToData:typedOther.${idObjc.field(f.ident)}]")
-                case MList => w.w(s"[self.${idObjc.field(f.ident)} isEqualToArray:typedOther.${idObjc.field(f.ident)}]")
+                case MList | MArray => w.w(s"[self.${idObjc.field(f.ident)} isEqualToArray:typedOther.${idObjc.field(f.ident)}]")
                 case MSet => w.w(s"[self.${idObjc.field(f.ident)} isEqualToSet:typedOther.${idObjc.field(f.ident)}]")
                 case MMap => w.w(s"[self.${idObjc.field(f.ident)} isEqualToDictionary:typedOther.${idObjc.field(f.ident)}]")
                 case MOptional =>
@@ -387,6 +422,15 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl
       }
 
+      if (r.derivingTypes.contains(DerivingType.NSCopying)) {
+        w.wl("- (id)copyWithZone:(NSZone *)zone")
+        w.wl("{")
+        w.wl("    return self;")
+        w.wl("}")
+        w.wl
+      }
+
+      w.wl("#ifndef DJINNI_DISABLE_DESCRIPTION_METHODS")
       w.wl("- (NSString *)description")
       w.braced {
         w.w(s"return ").nestedN(2) {
@@ -410,6 +454,11 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                 } else {
                   w.w(s"@(self.${idObjc.field(f.ident)})")
                 }
+              case p: MProtobuf =>
+                p.body.objc match {
+                  case Some(_) => w.w(s"self.${idObjc.field(f.ident)}")
+                  case None => w.w("""@"[Opaque C++ Protobuf object]"""")
+                }
               case _ => w.w(s"self.${idObjc.field(f.ident)}")
             }
           }
@@ -417,90 +466,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl("];")
       }
       w.wl
-
-      if (spec.ubGenerateSetters) {
-        val methodPrefix = spec.ubMethodPrefix + "_"
-        for (f <- r.fields) {
-          f.ty.resolved.base match {
-            case MBinary => w.wl("")
-            case MList =>
-              f.ty.resolved.args.head.base match {
-              case MBinary => w.wl("")
-              case MList => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}twoDimensionalArrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
-              case MSet => w.wl("")
-              case MMap => w.wl("")
-              case MString => w.wl("")
-              case t: MPrimitive => w.wl("")
-              case df: MDef => df.defType match {
-                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withArray:value];\n}")
-                case DEnum => w.wl("")
-                case _ => w.wl("")
-              }
-              case e: MExtern => e.defType match {
-                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withArray:value];\n}")
-                case DEnum => w.wl("")
-                case _ => w.wl("")
-              }
-              case _ => w.wl("")
-              }
-            case MSet => w.wl("")
-            case MMap => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSDictionary ${methodPrefix}dictionaryOfClass:[${marshal.fqFieldType(f.ty.resolved.args.last).dropRight(1)}class] withDictionary:value];\n}")
-            case MOptional =>
-              f.ty.resolved.args.head.base match {
-              case MBinary => w.wl("")
-              case MList => f.ty.resolved.args.head.args.head.base match {
-                case MBinary => w.wl("")
-                case MList => w.wl("")
-                case MSet => w.wl("")
-                case MMap => w.wl("")
-                case MString => w.wl("")
-                case t: MPrimitive => w.wl("")
-                case df: MDef => df.defType match {
-                  case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
-                  case DEnum => w.wl("")
-                  case _ => w.wl("")
-                }
-                case e: MExtern => e.defType match {
-                  case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
-                  case DEnum => w.wl("")
-                  case _ => w.wl("")
-                }
-                case _ => w.wl("")
-              }
-              case MSet => w.wl("")
-              case MMap => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSDictionary ${methodPrefix}dictionaryOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.last).dropRight(1)}class] withDictionary:value];\n}")
-              case MString => w.wl("")
-              case t: MPrimitive => w.wl("")
-              case df: MDef => df.defType match {
-                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withDictionary:value];\n}")
-                case DEnum => w.wl("")
-                case _ => w.wl("")
-              }
-              case e: MExtern => e.defType match {
-                case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head).dropRight(1)}class] withDictionary:value];\n}")
-                case DEnum => w.wl("")
-                case _ => w.wl("")
-              }
-              case _ => w.wl("")
-            }
-
-            case MString => w.wl("")
-            case t: MPrimitive => w.wl("")
-            case df: MDef => df.defType match {
-              case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty).dropRight(1)}class] withDictionary:value];\n}")
-              case DEnum => w.wl("")
-              case _ => w.wl("")
-            }
-
-            case e: MExtern => e.defType match {
-              case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}objectOfClass:[${marshal.fqFieldType(f.ty).dropRight(1)}class] withDictionary:value];\n}")
-              case DEnum => w.wl("")
-              case _ => w.wl("")
-            }
-            case _ => w.wl("")
-          }
-        }
-      }
+      w.wl("#endif")
 
       w.wl("@end")
     })
@@ -509,7 +475,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
   def writeObjcFile(fileName: String, origin: String, refs: Iterable[String], f: IndentWriter => Unit) {
     createFile(spec.objcOutFolder.get, fileName, (w: IndentWriter) => {
       w.wl("// AUTOGENERATED FILE - DO NOT MODIFY!")
-      w.wl("// This file generated by Djinni from " + origin)
+      w.wl("// This file was generated by Djinni from " + origin)
       w.wl
       if (refs.nonEmpty) {
         // Ignore the ! in front of each line; used to put own headers to the top

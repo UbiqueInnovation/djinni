@@ -15,4 +15,6 @@
 @import "extended_record.djinni"
 @import "varnames.djinni"
 @import "relative_paths.djinni"
-@import "parcelable.djinni"
+@import "array.djinni"
+@import "nscopying.djinni"
+@import "static_method_language.djinni"

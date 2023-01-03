@@ -1,0 +1,11 @@
+cpp:
+    header: '"proto/cpp/test2.pb.h"'
+    namespace: 'djinni::test2'
+java:
+    class: 'djinni.test2.Test2'
+ts:
+    module: '../../djinni/vendor/third-party/proto/ts/test2'
+    namespace: 'prototest2'
+ 
+messages:
+    - PersistingState

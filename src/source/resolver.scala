@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
@@ -50,10 +52,12 @@ def resolve(metas: Scope, idl: Seq[TypeDecl]): Option[Error] = {
           DEnum
         case r: Record => DRecord
         case i: Interface => DInterface
+        case p: ProtobufMessage => throw new AssertionError("unreachable")
       }
       topScope = topScope.updated(typeDecl.ident.name, typeDecl match {
         case td: InternTypeDecl => MDef(typeDecl.ident.name, typeDecl.params.length, defType, typeDecl.body)
         case td: ExternTypeDecl => YamlGenerator.metaFromYaml(td)
+        case td: ProtobufTypeDecl => MProtobuf(td.ident.name, 0, td.body.asInstanceOf[ProtobufMessage])
       })
     }
 
@@ -89,6 +93,7 @@ private def resolve(scope: Scope, typeDef: TypeDef) {
     case e: Enum => resolveEnum(scope, e)
     case r: Record => resolveRecord(scope, r)
     case i: Interface => resolveInterface(scope, i)
+    case p: ProtobufMessage=>
   }
 }
 
@@ -116,6 +121,7 @@ private def resolveConst(typeDef: TypeDef) {
     case e: Enum =>
     case r: Record => f(r.consts)
     case i: Interface => f(i.consts)
+    case p: ProtobufMessage=>
   }
 }
 
@@ -135,7 +141,7 @@ private def constTypeCheck(ty: MExpr, value: Any, resolvedConsts: Seq[Const]) {
     throw new AssertionError(s"Const ${ref.name} does not exist")
   }
   ty.base match {
-    case MBinary | MList | MSet | MMap =>
+    case MBinary | MList | MSet | MMap | MArray =>
       throw new AssertionError("Type not allowed for constant")
     case MString =>
       if (!value.isInstanceOf[String] ||
@@ -221,7 +227,7 @@ private def resolveRecord(scope: Scope, r: Record) {
         throw new Error(f.ident.loc, "Cannot safely implement Eq on a record that may be extended").toException
       }
     f.ty.resolved.base match {
-      case MBinary | MList | MSet | MMap =>
+      case MBinary | MList | MSet | MMap | MArray =>
         if (r.derivingTypes.contains(DerivingType.Ord))
           throw new Error(f.ident.loc, "Cannot compare collections in Ord deriving (Java limitation)").toException
       case MString =>
@@ -253,6 +259,7 @@ private def resolveRecord(scope: Scope, r: Record) {
             throw new Error(f.ident.loc, s"Some deriving required is not implemented in record ${f.ident.name}").toException
         case DEnum =>
       }
+      case p: MProtobuf =>
       case _ => throw new AssertionError("Type cannot be resolved")
     }
   }

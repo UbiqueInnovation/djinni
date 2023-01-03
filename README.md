@@ -1,17 +1,11 @@
 # Djinni
 
-Djinni is a tool for generating cross-language type declarations and interface bindings. It's
-designed to connect C++ with either Java or Objective-C. Python support is available in an
-experimental version on the `python` branch.
-
-Djinni can be used to interface cross-platform C++ library code with platform-specific Java and
-Objective-C on Android and iOS.  We announced Djinni at CppCon 2014. You can see the
-[slides](https://bit.ly/djinnitalk) and [video](https://bit.ly/djinnivideo).  For more info about
-Djinni and how others are using it, check out the community links at the end of this document.
-
-__Maintenance note:__ This repo is stable but no longer maintained by Dropbox.  If you have
-questions or want to talk to other users of Djinni, you can join the Slack community via the
-link at the end of this document.
+Djinni is a project originally created by Dropbox that generates bridging code
+between C++ and other programming languages. While Dropbox has stopped
+maintaining the open source Djinni repository on Github, we at Snapchat have
+developed our internal fork since then. After contacting Dropbox, we are now
+officially taking over the maintenance of Djinni from Dropbox and will keep
+developing it here.
 
 ## Main Features
 - Generates parallel C++, Java and Objective-C type definitions from a single interface
@@ -21,552 +15,359 @@ link at the end of this document.
 - Generates interface code allowing bidirectional calls between C++ and Java (with JNI) or
   Objective-C (with Objective-C++).
 - Can autogenerate comparator functions (equality, ordering) on data types.
+This file only covers the parts that have been changed.  Please see the
+[original dropbox readme](README.dropbox.md) for the full Djinni documentation.
 
-## Added Features
-- Kotlin code generation support
-- Swift package manager support
-- remove read only property of TXSItemList.h
-- android made records implement java.io.Serializable
-- android added setter to records
-- added more [forbidden keywords](https://github.com/UbiqueInnovation/djinni/blob/feature/ubique-djinni-changes/src/source/resolver.scala#L331)
-- added more options
-  - ub-foundation-header  
-  
-    `Foundation import added to each C++ header file. Format: \"<Foundation/Foundation.h>\" (default: None)`
-  - ub-generate-setters
+## Building
 
+![Bazel Build](https://github.com/Snapchat/djinni/workflows/Build%20and%20Test/badge.svg)
 
-    `Generate custom setters for non-primitive fields in records (default: false).`
-  - ub-method-prefix
+Both the Djinni code generator and test suite are built with Bazel. You can use
+either plain Bazel or [Bazelisk](https://github.com/bazelbuild/bazelisk).
 
+### Building and running the test suite
 
-    `Prefix added to custom methods when generating setters (default: \"ub\").`
-  - ub-objc-record-base-class
+`./ci/generate.sh` generates the examples sources.
 
+Use `bazel test //test-suite:djinni-objc-tests //test-suite:djinni-java-tests`
+to build and run Objective-C and Java tests.
 
-    `Base class of the generated Objective-C classes`
-  - ub-readonly-properties
+### Building and running the mobile example apps
 
+The Android example app can be build with bazel: `bazel build
+//examples:android-app`, and then install to a device with `adb install
+bazel-bin/examples/android-app.apk`
 
-    `Use readonly properties on records (default: true)`
+The iOS example app are built with Xcode. Simply open the project in Xcode and
+it should work.
 
-## Getting Started
+### Working on the Djinni code generator
 
-### Types
-Djinni generates code based on interface definitions in an IDL file. An IDL file can contain
-three kinds of declarations: enums, records, and interfaces.
+You can load the project via Bazel
 
-* Enums become C++ enum classes, Java enums, or ObjC `NS_ENUM`s.
-* Flags become C++ enum classes with convenient bit-oriented operators, Java enums with `EnumSet`, or ObjC `NS_OPTIONS`.
-* Records are pure-data value objects.
-* Interfaces are objects with defined methods to call (in C++, passed by `shared_ptr`). Djinni
-  produces code allowing an interface implemented in C++ to be transparently used from ObjC or
-  Java, and vice versa.
+- Intellij with the Bazel and Scala plugin is required
+- Configure the bazel binary. If you use Bazelisk, set it as the binary in the IDEA bazel settings.
+- In Intellij, import a new Bazel project.
+    - Workspace directory: `/Users/$HOME/path-to-djinni-directory`
+    - Import project view file: `WORKSPACE/bzl/ide/djinni.bazelproject`
+- Similarly you can also use CLion if you wish to edit the C++ code
+    - You can set up any of the cc_* targets after importing the workspace.
 
-### IDL Files
-Djinni's input is an interface description file. Here's an example:
+You can also use `bazel build //src:djinni` and `bazel run //src:djinni` to
+verify the build and binary from the command line.
 
-    # Multi-line comments can be added here. This comment will be propagated
-    # to each generated definition.
-    my_enum = enum {
-        option1;
-        option2;
-        option3;
-    }
+## Modifications
 
-    my_flags = flags {
-      flag1;
-      flag2;
-      flag3;
-      no_flags = none;
-      all_flags = all;
-    }
+ - Replaced sbt and gyp with Bazel
+ - Added move assigment operator to GlobalRef in all djinni_support.hpp files
+ - Made JniClassInitializer constructor public to allow arbitrary additional initialization in JNI_OnLoad()
+ - Speed up string passing between Java and C++ (about 5-10x faster depending on string size)
+ - Eliminate CppProxy finalizers (better stability)
+ - Injecting code with `DJINNI_FUNCTION_PROLOGUE`
+ - Option to generate ObjC protocols
+ - Option to generate function prologue
+ - Option to omit objc helper methods
+ - Option to disable exception translation in ObjC
+ - array<> type support
+ - outcome<> type support
+ - Protobuf type support
+ - Local flags with `@flag` directive
+ - DataView for copy free data passing
+ - DateRef for copy free data passing with ownership
+ - Generating string names for C++ enums
+ - Bug fixes
 
-    my_record = record {
-        id: i32;
-        info: string;
-        store: set<string>;
-        hash: map<string, i32>;
+## Using new features
 
-        values: list<another_record>;
+### Injecting code to Djinni calls
 
-        # Comments can also be put here
-
-        # Constants can be included
-        const string_const: string = "Constants can be put here";
-        const min_value: another_record = {
-            key1 = 0,
-            key2 = ""
-        };
-    }
-
-    another_record = record {
-        key1: i32;
-        key2: string;
-    } deriving (eq, ord)
-
-    # This interface will be implemented in C++ and can be called from any language.
-    my_cpp_interface = interface +c {
-        method_returning_nothing(value: i32);
-        method_returning_some_type(key: string): another_record;
-        static get_version(): i32;
-
-        # Interfaces can also have constants
-        const version: i32 = 1;
-    }
-
-    # This interface will be implemented in Java and ObjC and can be called from C++.
-    my_client_interface = interface +j +o {
-        log_string(str: string): bool;
-    }
-
-Djinni files can also include each other. Adding the line:
-
-    @import "relative/path/to/filename.djinni"
-
-at the beginning of a file will simply include another file. Child file paths are
-relative to the location of the file that contains the @import. Two different djinni files
-cannot define the same type. `@import` behaves like `#include` with `#pragma once` in C++, or
-like ObjC's `#import`: if a file is included multiple times through different paths, then it
-will only be processed once.
-
-### Generate Code
-When the Djinni file(s) are ready, from the command line or a bash script you can run:
-
-    src/run \
-       --java-out JAVA_OUTPUT_FOLDER \
-       --java-package com.example.jnigenpackage \
-       --java-cpp-exception DbxException \ # Choose between a customized C++ exception in Java and java.lang.RuntimeException (the default).
-       --ident-java-field mFooBar \ # Optional, this adds an "m" in front of Java field names
-       \
-       --cpp-out CPP_OUTPUT_FOLDER \
-       \
-       --jni-out JNI_OUTPUT_FOLDER \
-       --ident-jni-class NativeFooBar \ # This adds a "Native" prefix to JNI class
-       --ident-jni-file NativeFooBar \ # This adds a prefix to the JNI filenames otherwise the cpp and jni filenames are the same.
-       \
-       --objc-out OBJC_OUTPUT_FOLDER \
-       --objc-type-prefix DB \ # Apple suggests Objective-C classes have a prefix for each defined type.
-       \
-       --objcpp-out OBJC_OUTPUT_FOLDER \
-       \
-       --idl MY_PROJECT.djinni
-
-Some other options are also available, such as `--cpp-namespace` that put generated C++ code into the namespace specified. For a list of all options, run
-`src/run --help`
-
-Sample generated code is in the `example/generated-src/` and `test-suite/generated-src/`
-directories of this distribution.
-
-Note that if a language's output folder is not specified, that language will not be generated.
-For more information, run `run --help` to see all command line arguments available.
-
-### Use Generated Code in Your Project
-
-#### Java / JNI / C++ Project
-
-##### Includes & Build target
-The following headers / code will be generated for each defined type:
-
-| Type       | C++ header             | C++ source                 | Java                | JNI header            | JNI source            |
-|------------|------------------------|----------------------------|---------------------|-----------------------|-----------------------|
-| Enum/Flags | my\_enum.hpp           |                            | MyEnum.java         | NativeMyEnum.hpp      | NativeMyEnum.cpp      |
-| Record     | my\_record[\_base].hpp | my\_record[\_base].cpp (+) | MyRecord[Base].java | NativeMyRecord.hpp    | NativeMyRecord.cpp    |
-| Interface  | my\_interface.hpp      | my\_interface.cpp (+)      | MyInterface.java    | NativeMyInterface.hpp | NativeMyInterface.cpp |
-
-(+) Generated only for types that contain constants.
-
-Add all generated source files to your build target, as well as the contents of
-`support-lib/java`.
-
-##### Our JNI approach
-JNI stands for Java Native Interface, an extension of the Java language to allow interop with
-native (C/C++) code or libraries. Complete documentation on JNI is available at:
-http://docs.oracle.com/javase/6/docs/technotes/guides/jni/spec/jniTOC.html
-
-For each type, built-in (`list`, `string`, etc.) or user-defined, Djinni produces a translator
-class with a `toJava` and `fromJava` function to translate back and forth.
-
-Application code is responsible for the initial load of the JNI library. Add a static block
-somewhere in your code:
-
-    System.loadLibrary("YourLibraryName");
-    // The name is specified in Android.mk / build.gradle / Makefile, depending on your build system.
-
-If you package your native library in a jar, you can also use `com.dropbox.djinni.NativeLibLoader` 
-to help unpack and load your lib(s).  See the [Localhost README](example/localhost/README.md)
-for details.
-
-When a native library is called, JNI calls a special function called `JNI_OnLoad`. If you use
-Djinni for all JNI interface code, include `support_lib/jni/djinni_main.cpp`; if not,
-you'll need to add calls to your own `JNI_OnLoad` and `JNI_OnUnload` functions. See
-`support-lib/jni/djinni_main.cpp` for details.
-
-#### Objective-C / C++ Project
-
-##### Includes & Build Target
-Generated files for Objective-C / C++ are as follows (assuming prefix is `DB`):
-
-| Type       | C++ header             | C++ source                 | Objective-C files        | Objective-C++ files         |
-|------------|------------------------|----------------------------|--------------------------|-----------------------------|
-| Enum/Flags | my\_enum.hpp           |                            | DBMyEnum.h               |                             |
-| Record     | my\_record[\_base].hpp | my\_record[\_base].cpp (+) | DBMyRecord[Base].h       | DBMyRecord[Base]+Private.h  |
-|            |                        |                            | DBMyRecord[Base].mm (++) | DBMyRecord[Base]+Private.mm |
-| Interface  | my\_interface.hpp      | my\_interface.cpp (+)      | DBMyInterface.h          | DBMyInterface+Private.h     |
-|            |                        |                            |                          | DBMyInterface+Private.mm    |
-
-(+) Generated only for types that contain constants.
-(++) Generated only for types with derived operations and/or constants. These have `.mm` extensions to allow non-trivial constants.
-
-Add all generated files to your build target, as well as the contents of `support-lib/objc`.
-Note that `+Private` files can only be used with ObjC++ source (other headers are pure ObjC) and are not required by Objective-C users of your interface.
-
-## Details of Generated Types
-### Enum
-Enums are translated to C++ `enum class`es with underlying type `int`, ObjC `NS_ENUM`s with
-underlying type `NSInteger`, and Java enums.
-
-### Flags
-Flags are translated to C++ `enum class`es with underlying type `unsigned` and a generated set
-of overloaded bitwise operators for convenience, ObjC `NS_OPTIONS` with underlying type
-`NSUInteger`, and Java `EnumSet<>`. Contrary to the above enums, the enumerants of flags represent
-single bits instead of integral values.
-
-When specifying a `flags` type in your IDL file you can assign special semantics to options:
+Two new switches are introduced:
 
 ```
-my_flags = flags {
-  flag1;
-  flag2;
-  flag3;
-  no_flags = none;
-  all_flags = all;
+--jni-function-prologue-file "path/to/header_file.h"
+--objcpp-function-prologue-file "path/to/header_file.h"
+```
+
+If they are specified at the command line, then all generated Djinni calls will
+contain a macro at the beginning of the bridge function:
+
+```
+DJINNI_FUNCTION_PROLOGUE("DjinniInterfaceName.methodName");
+```
+
+You should then `#define` the `DJINNI_FUNCTION_PROLOGUE` macro in the specified
+header file to inject whatever code you need there.
+
+For example you could make it log the method name. Or you could instantiate a
+scoped object to trace the duration of the call.
+
+### Generate all interfaces as ObjC protocols
+
+By default, Djinni only generates interfaces as ObjC `@protocol` when these
+interfaces are tagged with `+o`.  Otherwise they become `@interface` in ObjC.
+
+A new switch is introduced to override the default:
+
+`--objc-gen-protocol true`
+
+Enabling this will make all Djinni interfaces `@protocol` in ObjC. This means
+you can build your code without linking with the native code implementations,
+for example, when you want to mock the interfaces in pure ObjC for testing.
+
+### Prohibit some ObjC helper methods to minimize binary size
+
+You can use `--objc-disable-class-ctor true` to remove the static constructors
+from Djinni generated classes.
+
+You can also remove the `description` method in Djinni generated classes by
+defining the `DJINNI_DISABLE_DESCRIPTION_METHODS` preprocessor symbol.
+
+These help reducing the binary size of the app slightly.
+
+### Disable C++ exception translation in ObjC
+
+You can use `--objcpp-disable-exception-translation true` to disable the
+translation of C++ exceptions to ObjC.  This means ObjC code will see C++
+exceptions directly.
+
+This is sometimes preferrable compared to the default behaviour which converts
+C++ exceptions to ObjC NSException, because the original exception stack is
+preserved.
+
+### outcome<> builtin type
+
+The `outcome<>` type provides a standard way to explicitly define error
+conditions in Djinni IDL.  We believe this is a superior approach than throwing
+exceptions across language boundaries.
+
+An outcome is defined by combining a "result" type and an "error" type:
+```
+outcome<RESULT, ERROR>
+```
+Where RESULT and ERROR can be any Djinni types (primitives or records).
+
+
+In C++, the `outcome<>` type maps to the template class `djinni::expected<>`.
+In Java, it maps to the generic class `com.snapchat.djinni.Outcome<>`. In ObjC,
+it maps to the generic class `DJOutcome<>`.
+
+Example:
+
+Use `@extern` directive to include support of `outcome` type to your `idl` file.
+
+```
+@extern "../djinni/support-lib/outcome.yaml"
+
+my_interface = interface +c {
+    query(): outcome<string, i32>;
 }
 ```
-In the above example the elements marked with `none` and `all` are given special meaning.
-In C++ and ObjC the `no_flags` option is generated with a value that has no bits set (i.e. `0`),
-and `all_flags` is generated as a bitwise-or combination of all other values. In Java these
-special options are not generated as one can just use `EnumSet.noneOf()` and `EnumSet.allOf()`.
 
-### Record
-Records are data objects. In C++, records contain all their elements by value, including other
-records (so a record cannot contain itself).
+### Use Protobuf types in Djinni
 
-#### Data types
-The available data types for a record, argument, or return value are:
+We support using Protobuf types directly in Djinni IDL. In order to use Protobuf
+types, you first need to declare them in a yaml manifest file, in which we specify
 
- - Boolean (`bool`)
- - Primitives (`i8`, `i16`, `i32`, `i64`, `f32`, `f64`).
- - Strings (`string`)
- - Binary (`binary`). This is implemented as `std::vector<uint8_t>` in C++, `byte[]` in Java,
-   and `NSData` in Objective-C.
- - Date (`date`).  This is `chrono::system_clock::time_point` in C++, `Date` in Java, and
-   `NSDate` in Objective-C.
- - List (`list<type>`). This is `vector<T>` in C++, `ArrayList` in Java, and `NSArray`
-   in Objective-C. Primitives in a list will be boxed in Java and Objective-C.
- - Set (`set<type>`). This is `unordered_set<T>` in C++, `HashSet` in Java, and `NSSet` in
-   Objective-C. Primitives in a set will be boxed in Java and Objective-C.
- - Map (`map<typeA, typeB>`). This is `unordered_map<K, V>` in C++, `HashMap` in Java, and
-   `NSDictionary` in Objective-C. Primitives in a map will be boxed in Java and Objective-C.
- - Enumerations / Flags
- - Optionals (`optional<typeA>`). This is `std::experimental::optional<T>` in C++11, object /
-   boxed primitive reference in Java (which can be `null`), and object / NSNumber strong
-   reference in Objective-C (which can be `nil`).
- - Other record types. This is generated with a by-value semantic, i.e. the copy method will
-   deep-copy the contents.
+- How to find the header file and namespace/class/prefix
+- List the Protobuf messages you want to use in Djinni
 
-#### Extensions
-To support extra fields and/or methods, a record can be "extended" in any language. To extend
-a record in a language, you can add a `+c` (C++), `+j` (Java), or `+o` (ObjC) flag after the
-record tag. The generated type will have a `Base` suffix, and you should create a derived type
-without the suffix that extends the record type.
-
-The derived type must be constructible in the same way as the `Base` type. Interfaces will
-always use the derived type.
-
-#### Derived methods
-For record types, Haskell-style "deriving" declarations are supported to generate some common
-methods. Djinni is capable of generating equality and order comparators, implemented
-as operator overloading in C++ and standard comparison functions in Java / Objective-C.
-
-Things to note:
-
- - All fields in the record are compared in the order they appear in the record declaration.
-   If you need to add a field later, make sure the order is correct.
- - Ordering comparison is not supported for collection types, optionals, and booleans.
- - To compare records containing other records, the inner record must derive at least the same
-   types of comparators as the outer record.
-
-### Interface
-
-#### Special Methods for C++ Only
-`+c` interfaces (implementable only in C++) can have methods flagged with the special keywords const and static which have special effects in C++:
-
-   special_methods = interface +c {
-       const accessor_method();
-       static factory_method();
-   }
-   
-- `const` methods will be declared as const in C++, though this cannot be enforced on callers in other languages, which lack this feature.
-- `static` methods will become a static method of the C++ class, which can be called from other languages without an object.  This is often useful for factory methods to act as a cross-language constructor.
-
-#### Exception Handling
-When an interface implemented in C++ throws a `std::exception`, it will be translated to a
-`java.lang.RuntimeException` in Java or an `NSException` in Objective-C. The `what()` message
-will be translated as well.
-
-### Constants
-Constants can be defined within interfaces and records. In Java and C++ they are part of the
-generated class; and in Objective-C, constant names are globals with the name of the
-interface/record prefixed. Example:
-
-   record_with_const = record +c +j +o {
-       const const_value: i32 = 8;
-   }
-
-will be `RecordWithConst::CONST_VALUE` in C++, `RecordWithConst.CONST_VALUE` in Java, and
-`RecordWithConstConstValue` in Objective-C.
-
-## Modularization and Library Support
-When generating the interface for your project and wish to make it available to other users
-in all of C++/Objective-C/Java you can tell Djinni to generate a special YAML file as part
-of the code generation process. This file then contains all the information Djinni requires
-to include your types in a different project. Instructing Djinni to create these YAML files
-is controlled by the following arguments:
-- `--yaml-out`: The output folder for YAML files (Generator disabled if unspecified).
-- `--yaml-out-file`: If specified all types are merged into a single YAML file instead of generating one file per type (relative to `--yaml-out`).
-- `--yaml-prefix`: The prefix to add to type names stored in YAML files (default: `""`).
-
-Such a YAML file looks as follows:
-```yml
----
-name: mylib_record1
-typedef: 'record +c deriving(eq, ord)'
-params: []
-prefix: 'mylib'
+```
 cpp:
-    typename: '::mylib::Record1'
-    header: '"MyLib/Record1.hpp"'
-    byValue: false
-objc:
-    typename: 'MLBRecord1'
-    header: '"MLB/MLBRecord1.h"'
-    boxed: 'MLBRecord1'
-    pointer: true
-    hash: '%s.hash'
-objcpp:
-    translator: '::mylib::djinni::objc::Record1'
-    header: '"mylib/djinni/objc/Record1.hpp"'
+    header: '"proto/cpp/test.pb.h"'
+    namespace: 'djinni::test'
 java:
-    typename: 'com.example.mylib.Record1'
-    boxed: 'com.example.mylib.Record1'
-    reference: true
-    generic: true
-    hash: '%s.hashCode()'
-jni:
-    translator: '::mylib::djinni::jni::Record1'
-    header: '"Duration-jni.hpp"'
-    typename: jobject
-    typeSignature: 'Lcom/example/mylib/Record1;'
----
-name: mylib_interface1
-typedef: 'interface +j +o'
-    (...)
----
-name: mylib_enum1
-typedef: 'enum'
-    (...)
+    class: 'djinni.test.Test'
+objc:
+    header: '"proto/objc/test.pbobjc.h"'
+    prefix: 'DJTest'
+ 
+messages:
+    - Person
+    - AddressBook
+```
+
+After that you can reference it in Djinni IDL and use the types as if they are
+regular Djinni types:
 
 ```
-Each document in the YAML file describes one extern type.
-A full documentation of all fields is available in `example/example.yaml`. You can also check
-the files `test-suite/djinni/date.yaml` and `test-suite/djinni/duration.yaml` for some
-real working examples of what you can do with it.
+@protobuf "my_proto.yaml"
+...
+MyRecordWithProto = record {
+    // Yay! proto!
+    person: Person;
+}
 
-To use a library type in your project simply include it in your IDL file and refer to it using
-its name identifier:
-```
-@extern "mylib.yaml"
-
-client_interface = interface +c {
-  foo(): mylib_record1;
+MyInterface = interface +c {
+   // Yay! proto!
+    static foo(x: AddressBook);
 }
 ```
 
-These files can be created by hand as long as you follow the required format. This allows you
-to support types not generated by Djinni. See `test-suite/djinni/duration.yaml` and the
-accompanying translators in `test-suite/handwritten-src/cpp/Duration-objc.hpp` and 
-`test-suite/handwritten-src/cpp/Duration-jni.hpp` for an advanced example. Handwritten
-translators implement the following concept:
-```cpp
-// For C++ <-> Objective-C
-struct Record1
-{
-    using CppType = ::mylib::Record1;
-    using ObjcType = MLBRecord1*;
+### Optimize primitive array with array<>
 
-    static CppType toCpp(ObjcType o) { return /* your magic here */; }
-    static ObjcType fromCpp(CppType c) { return /* your magic here */; }
+The new array<> type is similar to list<>, but optimized for Java primitive
+arrays. It is mapped to regular Java arrays (T[]) instead of ArrayList. Since it
+doesn't have to box elements as objects, it's order of magnitude faster than
+list<> when the element type is primitive.
 
-    // Option 1: use this if no boxing is required
-    using Boxed = Record1;
-    // Option 2: or this if you do need dedicated boxing behavior
-    struct Boxed
-    {
-        using ObjcType = MLBRecord1Special*;
-        static CppType toCpp(ObjcType o) { return /* your magic here */; }
-        static ObjcType fromCpp(CppType c) { return /* your magic here */; }
-    }
-};
+array<> is identical to list<> in Objective-C because there is no managed
+primitive array in Objective-C.
+
+### Local flags with `@flag` directive
+
+In addition to supplying switches on the Djinni command line, it's also possible
+to specify them in the idl file with the `@flag` directive.
+
+For example, adding the line
+
 ```
-```cpp
-// For C++ <-> JNI
-#include "djinni_support.hpp"
-struct Record1
-{
-    using CppType = ::mylib::Record1;
-    using JniType = jobject;
-
-    static CppType toCpp(JniType j) { return /* your magic here */; }
-    // The return type *must* be LocalRef<T> if T is not a primitive!
-    static ::djinni::LocalRef<jobject> JniType fromCpp(CppType c) { return /* your magic here */; }
-
-    using Boxed = Record1;
-};
-```
-For `interface` classes the `CppType` alias is expected to be a `std::shared_ptr<T>`.
-
-Be sure to put the translators into representative and distinct namespaces.
-
-If your type is generic the translator takes the same number of template parameters.
-At usage each is instantiated with the translators of the respective type argument.
-```cpp
-template<class A, class B>
-struct Record1
-{
-    using CppType = ::mylib::Record1<typename A::CppType, typename B::CppType>;
-    using ObjcType = MLBRecord1*;
-
-    static CppType toCpp(ObjcType o)
-    {
-        // Use A::toCpp() and B::toCpp() if necessary
-        return /* your magic here */;
-    }
-    static ObjcType fromCpp(CppType c)
-    {
-        // Use A::fromCpp() and B::fromCpp() if necessary
-        return /* your magic here */;
-    }
-
-    using Boxed = Record1;
-};
+@flag "--objc-gen-protocol true"
 ```
 
-## Miscellaneous
-### Record constructors / initializers
-Djinni does not permit custom constructors for records or interfaces, since there would be
-no way to implement them in Java except by manually editing the autogenerated file. Instead,
-use extended records or static functions.
+to the djinni idl file will enable generation of objc protocols for
+interfaces. This is equivalent to adding the same switches to the djinni command
+line.
 
-### Identifier Format
-Djinni supports overridable formats for most generated filenames and identifiers. The complete
-list can found by invoking Djinni with `--help`. The format is specified by formatting the
-word FooBar in the desired style:
-- `FOO_BAR` -> `GENERATED_IDENT`
-- `mFooBar` -> `mGeneratedIdent`
-- `FooBar` -> `GeneratedIdent`
+- Multiple `@flag` lines can appear in the same file.
+- `@flag` lines must appear at the top of the djinni idl file before anything
+  else.
+- `@import`ed files can include `@flag` lines too, and they will apply to the
+  parent file. (this means you can put common flags in a file and `@import` it)
 
-### Integer types
-In Djinni, i8 through i64 are all used with fixed length. The C++ builtin `int`, `long`, etc
-and Objective-C `NSInteger` are not used because their length varies by architecture. Unsigned
-integers are not included because they are not available in Java.
+### Exposing data across language boundary with DataView
 
-## Test Suite
-Run `make test` to invoke the test suite, found in the test-suite subdirectory. It will build and run Java code on a local JVMy, plus Objective-C on an iOS simulator.  The latter will only work on a Mac with Xcode.
+The builtin `binary` type always copies data across language boundary. It is
+simple to use but can be expensive when the size of the data is large or when
+the same data is passed back and force many times.
 
-## Generate a standalone jar
+The `DataView` type is a viewport into a buffer owned by the other language. It
+maps to the custom `DataView` class in C++. In Java it is mapped to
+`java.nio.ByteBuffer` (direct buffer). And in Objective-C, it is mapped to
+`NSData`.
 
-The `djinni_jar` target of the main `Makefile` creates a standalone `.jar`. 
-This uses the [sbt assembly plugin](https://github.com/sbt/sbt-assembly) under the hoods.
+It is important to keep in mind that `DataView` does not carry ownership. If the
+underlying data is destroyed by the owner, then it will point to an invalid
+memory location. It is your responsibility to make sure the buffer remains valid
+while you use it.
 
-Simply call this target from the root directory:
-```shell
-make djinni_jar
+### Use DataRef to pass data across language boundary with ownership
+
+`DataRef` is a buffer in Java or Objective-C heap but accessible from C++. It is
+also mapped to `java.nio.ByteBuffer` and `NSData`. But unlike `DataView`, it
+owns the buffer so destroying the object on one side of the language boundary
+does not destroy the underlying buffer as long as the other side still holds it.
+
+Since the underlying data object is in Java or Object-C, it is more expensive to
+create than `DataView`. But the ownership allows you to hold on to the object
+without worrying about memory safety.
+
+DataRef has a special optimization to take over the data from
+`std::vector<uint8_t>` and `std::string`. If you construct a `DataRef` with an
+R-value reference of these types, then `DataRef` can steal the buffer from them
+without copying the bytes.
+
+### String names for C++ enums
+
+Djinni now generates a `to_string()` function that you can use to convert C++
+enums to their string names. This makes printing enums in debugging traces a lot
+more convenient. This function is `constexpr` so if you call it with an enum
+value known to the compiler at compile time, then there is no runtime
+overhead. You may also call it with a dynamic value, in that case it's a fast
+array indexing operation.
+
+## Experimantal WASM support
+
+Djinni can generate code that bridges C++ (that compiles to Web Assembly) and
+Javascript/TypeScript in web browsers. This feature is currently experimental.
+
+For WASM, Djinni generates:
+- C++ code, which should be compiled into the WASM bindary
+- TypeScript code, provides optional TypeScript interface definitions
+
+The generated code can be used with both plain Javascript and TypeScript.
+
+New command line switches:
+
+- `--wasm-out`: wasm bridge code output folder
+- `--wasm-include-prefix`: path prefix to be added to include lines for WASM
+  bridge class header files
+- `--wasm-include-cpp-prefix`: path prefix to be added to include lines for main
+  C++ class header files
+- `--wasm-base-lib-include-prefix`: path prefix to be added to djinni support
+  library inlcude lines in generated files
+- `--ts-out`: typescript output folder
+- `--ts-module`: typescript module(file) name
+
+Almost all Djinni features are supported, including importing external types via
+yaml and zero-copy buffer passing.
+
+Notable differences when comparing to the Java/ObjC support:
+
+- deriving(ord, eq) is not applicable to Javascript because JS doesn't support
+  overloading standard comparison methods.
+- Extended records generate the same code as regular records. Because JS can
+  easily add extension methods (by add functions to prototype) without having to
+  derive from a base class.
+
+The command to run Wasm/TypeScript unit tests is `bazel run
+//test-suite:server-ts`. You will need the `tsc` compiler and the `browserify`
+tool to run these tests.
+
+## Experimental async interface support
+
+With the new yaml type `future<>` we can now write Djinni interfaces that
+return results asynchronously more easily.
+
+Instead of writing this:
+
 ```
-This will produce a `.jar` file inside the `src/target/scala_<SCALA_VERSION>/djinni-assembly-<VERSION>.jar`.
-
-You can move and use it as any other executable `.jar`.
-
-Assuming the `.jar` is located at `$DJINNI_JAR_DIR` its version equals `0.1-SNAPSHOT`:
-```shell
-# Example
-java -jar $DJINNI_JAR_DIR/djinni-assembly-0.1-SNAPSHOT.jar \
-    --java-out "$temp_out/java" \
-    --java-package $java_package \
-    --java-class-access-modifier "package" \
-    --java-nullable-annotation "javax.annotation.CheckForNull" \
-    --java-nonnull-annotation "javax.annotation.Nonnull" \
-    --ident-java-field mFooBar \
-    \
-    --cpp-out "$temp_out/cpp" \
-    --cpp-namespace textsort \
-    --ident-cpp-enum-type foo_bar \
-    \
-    --jni-out "$temp_out/jni" \
-    --ident-jni-class NativeFooBar \
-    --ident-jni-file NativeFooBar \
-    \
-    --objc-out "$temp_out/objc" \
-    --objcpp-out "$temp_out/objc" \
-    --objc-type-prefix TXS \
-    --objc-swift-bridging-header "TextSort-Bridging-Header" \
-    \
-    --idl "$in"
+FooCb = interface {
+  complete(res: i32): void;
+}
+Foo = interface {
+  bar(cb: FooCb): void;
+}
 ```
 
-*Note*: The `all` target of the main `Makefile` includes the `djinni_jar` target.
+We can now write:
 
-## Generate an iOS universal binary of the support library.
+(use `@extern` directive to include support of `future` type to your `idl` file)
 
-The `ios-build-support-lib.sh` helps you to build an universal static library for iOS platforms.
-It uses the platform file of the [ios-cmake](https://github.com/leetal/ios-cmake) repository.
+```
+@extern "../djinni/support-lib/future.yaml"
 
-It basically creates one universal static library per `IOS_PLATFORM` variable and uses `lipo` 
-to merge all the files in one.
+Foo = interface {
+  bar(): future<i32>;
+}
+```
 
-There is basically two variables you would like to modify:
+The `future<>` djinni type is mapped to the `Future` types defined in the C++,
+Java and ObjC djinni support library. In Javascript, `future<>` is mapped to the
+builtin `Promise` type (and therefore supports the `await` syntax).
 
-- `BUILD_APPLE_ARCHITECTURES`: Specifies which `IOS_PLATFORM` to build.
-For more informations, take a look at https://github.com/leetal/ios-cmake.
+The C++ `Future` type has optional support for coroutines. If coroutines are
+availble (eg. compiling with C++20 or C++17 with -fcoroutines-ts), then you can
+use `co_await` on future objects.
 
-- `ENABLE_BITCODE`: enable/disable the bitcode generation.
+## FAQ
 
-## Android Parcelable records
+Q. Do I need to use Bazel to build my project?
 
-Djinni supports generating records that implements `android.os.parcelable`.
+A. No. You may use whatever build system or IDE you like. All you need for your
+project is including the generated files in it. We use Bazel to build the code
+generator and unit tests, but it's not needed for building user projects. You
+still need to have Bazel installed if you want to run the code generator though,
+because the run_djinni.sh script indirectly uses it to ensure the code generator
+is built and up to date.
 
-In order to do that, there are two steps needed:
-- deriving the records that should be parcelable with the keyword parcelable: `deriving(parcelable)`
-- run Djinni with the following flag `--java-implement-android-os-parcelable true`
+Q. Can we include arbitrary bytes in the `string` type?
 
-## Community Links
+A. No! iOS and Java strings are unicode, so arbitrary bytes won't necessarily be
+able to get translated into such strings.
 
-* Join the discussion with other developers at the [Mobile C++ Slack Community](https://mobilecpp.herokuapp.com/)
-* There are a set of [tutorials](http://mobilecpptutorials.com/) for building a cross-platform app using Djinni.
-* [mx3](https://github.com/libmx3/mx3) is an example project demonstrating use of Djinni and other tools.
-* [Slides](https://bit.ly/djinnitalk) and [video](https://bit.ly/djinnivideo) from the CppCon 2014 talk where we introduced Djinni.
-* [Slides](https://bit.ly/djinnitalk2) and [video](https://bit.ly/djinnivideo2) from the CppCon 2015 talk about Djinni implementation techniques, and the addition of Python.
-* You can see a [CppCon 2014 talk](https://www.youtube.com/watch?v=5AZMEm3rZ2Y) by app developers at Dropbox about their cross-platform experiences.
+Q. How many Djinni objects can I have?
 
-## Authors
-- Kannan Goundan
-- Tony Grue
-- Derek He
-- Steven Kabbes
-- Jacob Potter
-- Iulia Tamas
-- Andrew Twyman
-
-## Contacts
-- Andrew Twyman - `artwymana+djinni@gmail.com`
-- Jacob Potter - `djinni@j4cbo.com`
+A. There is no limit in iOS.  But on Android, JNI has a limit on the number of
+global references you can create (usually ~64k). Each `interface` type Djinni
+object (either native object in java or java object in native) takes up one
+global reference. `record` type objects do not take up global references.

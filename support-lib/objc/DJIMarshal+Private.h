@@ -252,6 +252,31 @@ public:
     }
 };
 
+// base template, default conversion
+template<typename T>
+struct ContainerElem {
+    static id fromCpp(const typename T::CppType& elem) {
+        return T::Boxed::fromCpp(elem);
+    }
+    static typename T::CppType toCpp(typename T::Boxed::ObjcType obj) {
+        return T::Boxed::toCpp(obj);
+    }
+};
+// specialize for Optional<T>
+template<template<class> class OptionalType, class T>
+struct ContainerElem<Optional<OptionalType, T>> {
+    // check for empty optional and convert to NSNull
+    static id fromCpp(const typename Optional<OptionalType, T>::CppType& opt) {
+        return opt ? Optional<OptionalType, T>::fromCpp(opt) : (__bridge NSNull *)kCFNull;
+    }
+    // check for NSNull and convert to empty optional
+    static typename Optional<OptionalType, T>::CppType toCpp(typename Optional<OptionalType, T>::ObjcType obj) {
+        return (id)obj != (__bridge NSNull *)kCFNull ?
+            Optional<OptionalType, T>::toCpp(obj) :
+            typename Optional<OptionalType, T>::CppType();
+    }
+};
+
 template<class T>
 class List {
     using ECppType = typename T::CppType;
@@ -268,7 +293,7 @@ public:
         auto v = CppType();
         v.reserve(array.count);
         for(EObjcType value in array) {
-            v.push_back(T::Boxed::toCpp(value));
+            v.push_back(ContainerElem<T>::toCpp(value));
         }
         return v;
     }
@@ -277,11 +302,15 @@ public:
         assert(v.size() <= std::numeric_limits<NSUInteger>::max());
         auto array = [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(v.size())];
         for(const auto& value : v) {
-            [array addObject:T::Boxed::fromCpp(value)];
+            [array addObject:ContainerElem<T>::fromCpp(value)];
         }
         return [array copy];
     }
 };
+
+// ObjC does not have managed primitive array, so Array is the same as List in ObjC.
+template<class T>
+using Array = List<T>;
 
 template<class T>
 class Set {
@@ -298,7 +327,7 @@ public:
         assert(set);
         auto s = CppType();
         for(EObjcType value in set) {
-            s.insert(T::Boxed::toCpp(value));
+            s.insert(ContainerElem<T>::toCpp(value));
         }
         return s;
     }
@@ -307,7 +336,7 @@ public:
         assert(s.size() <= std::numeric_limits<NSUInteger>::max());
         auto set = [NSMutableSet setWithCapacity:static_cast<NSUInteger>(s.size())];
         for(const auto& value : s) {
-            [set addObject:T::Boxed::fromCpp(value)];
+            [set addObject:ContainerElem<T>::fromCpp(value)];
         }
         return [set copy];
     }
@@ -331,7 +360,7 @@ public:
         __block auto m = CppType();
         m.reserve(map.count);
         [map enumerateKeysAndObjectsUsingBlock:^(ObjcKeyType key, ObjcValueType obj, BOOL *) {
-            m.emplace(Key::Boxed::toCpp(key), Value::Boxed::toCpp(obj));
+            m.emplace(ContainerElem<Key>::toCpp(key), ContainerElem<Value>::toCpp(obj));
         }];
         return m;
     }
@@ -340,10 +369,70 @@ public:
         assert(m.size() <= std::numeric_limits<NSUInteger>::max());
         auto map = [NSMutableDictionary dictionaryWithCapacity:static_cast<NSUInteger>(m.size())];
         for(const auto& kvp : m) {
-            [map setObject:Value::Boxed::fromCpp(kvp.second) forKey:Key::Boxed::fromCpp(kvp.first)];
+            [map setObject:ContainerElem<Value>::fromCpp(kvp.second)
+                    forKey:ContainerElem<Key>::fromCpp(kvp.first)];
         }
         return [map copy];
     }
+};
+
+template <typename CPP_PROTO, typename OBJC_PROTO>
+class Protobuf {
+public:
+    using CppType = CPP_PROTO;
+    using ObjcType = OBJC_PROTO*;
+
+    using Boxed = Protobuf;
+
+    static CppType toCpp(ObjcType o)
+    {
+        NSData* serialized = [o data];
+        const void* bytes = [serialized bytes];
+        int size = static_cast<int>([serialized length]);
+        CPP_PROTO cppProto;
+
+        [[maybe_unused]]
+        bool success = cppProto.ParseFromArray(bytes, size);
+        assert(success);
+
+        return cppProto;
+    }
+    static ObjcType fromCpp(const CppType& c)
+    {
+        std::vector<uint8_t> buffer(c.ByteSizeLong());
+        [[maybe_unused]]
+        bool success = c.SerializeToArray(buffer.data(), static_cast<int>(buffer.size()));
+        assert(success);
+        NSData* serialized = [NSData dataWithBytesNoCopy:buffer.data() length:buffer.size() freeWhenDone:NO];
+        NSError* error = nil;
+        OBJC_PROTO* objcProto = [[OBJC_PROTO alloc] initWithData:serialized error:&error];
+        return objcProto;
+    }
+};
+
+template <typename CPP_PROTO>
+class ProtobufPassthrough {
+public:
+    using CppType = CPP_PROTO;
+    using ObjcType = CPP_PROTO;
+    using Boxed = CPP_PROTO;
+
+    static const CppType& toCpp(const ObjcType& o)
+    {
+        return o;
+    }
+    static const ObjcType& fromCpp(const CppType& c)
+    {
+        return c;
+    }
+};
+
+struct Void
+{
+    using CppType = void;
+    using ObjcType = NSNull*;
+    
+    using Boxed = Void;
 };
 
 } // namespace djinni
