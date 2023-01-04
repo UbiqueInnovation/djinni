@@ -24,3 +24,7 @@ test-suite/djinni/vendor/third-party/proto/ts/*.js
 /project
 /target
 /.metals
+*.class
+*.cache
+src/project
+src/target
