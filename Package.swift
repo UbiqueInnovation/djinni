@@ -18,11 +18,13 @@ let package = Package(
     targets: [
         .target(
             name: "DjinniSupport",
-            path: "support-lib/objc"
+            path: "support-lib/objc",
+            publicHeadersPath: ""
         ),
         .target(
             name: "DjinniSupportCpp",
-            path: "support-lib/cpp"
+            path: "support-lib/cpp",
+            publicHeadersPath: ""
         ),
     ],
     cxxLanguageStandard: .cxx1z
