@@ -10,20 +10,19 @@ let package = Package(
             name: "DjinniSupport",
             targets: ["DjinniSupport"]
         ),
+        .library(
+            name: "DjinniSupportCpp",
+            targets: ["DjinniSupportCpp"]
+        ),
     ],
     targets: [
         .target(
             name: "DjinniSupport",
-            path: "support-lib/",
-            exclude: ["jni",
-                      "java",
-                      "ios-build-support-lib.sh",
-                      "support_lib.gyp",
-                      "support-lib.iml",
-                      "proxy_cache_impl.hpp",
-                      "proxy_cache_interface.hpp",
-                      "djinni_common.hpp"],
-            publicHeadersPath: "objc"
+            path: "support-lib/objc"
+        ),
+        .target(
+            name: "DjinniSupportCpp",
+            path: "support-lib/cpp"
         ),
     ],
     cxxLanguageStandard: .cxx1z
