@@ -37,10 +37,13 @@ package object generatorTools {
                    javaIdentStyle: JavaIdentStyle,
                    javaCppException: Option[String],
                    javaAnnotation: Option[String],
+                   javaGenerateInterfaces: Boolean,
                    javaNullableAnnotation: Option[String],
                    javaNonnullAnnotation: Option[String],
                    javaImplementAndroidOsParcelable: Boolean,
                    javaUseFinalForRecord: Boolean,
+                   kotlinRecordsSerializable: Boolean,
+                   kotlinOutFolder: Option[File],
                    javaGenInterface: Boolean,
                    cppOutFolder: Option[File],
                    cppHeaderOutFolder: Option[File],
@@ -259,6 +262,12 @@ package object generatorTools {
           createFolder("Java", spec.javaOutFolder.get)
         }
         new JavaGenerator(spec).generate(idl)
+      }
+      if (spec.kotlinOutFolder.isDefined) {
+        if (!spec.skipGeneration) {
+          createFolder("Kotlin", spec.kotlinOutFolder.get)
+        }
+        new KotlinGenerator(spec).generate(idl)
       }
       if (spec.jniOutFolder.isDefined) {
         if (!spec.skipGeneration) {

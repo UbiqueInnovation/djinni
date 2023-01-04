@@ -36,7 +36,7 @@ class KotlinMarshal(spec: Spec) extends Marshal(spec) {
 
   def isEnumFlags(m: Meta): Boolean = m match {
     case MDef(_, _, _, Enum(_, true)) => true
-    case MExtern(_, _, _, Enum(_, true), _, _, _, _, _) => true
+    case MExtern(_, _, _, Enum(_, true), _, _, _, _, _,_,_) => true
     case _ => false
   }
   def isEnumFlags(tm: MExpr): Boolean = tm.base match {
@@ -72,6 +72,12 @@ class KotlinMarshal(spec: Spec) extends Marshal(spec) {
             case MList => "ArrayList"
             case MSet => "HashSet"
             case MMap => "HashMap"
+            case MArray => "ArrayList"
+            case MVoid => "void"
+            case p: MProtobuf => {
+              val prefix = p.body.java.pkg.replaceAllLiterally(".", "/")
+              s"L${prefix}$$${p.name};"
+            }
             case d: MDef => withPackage(packageName, idJava.ty(d.name))
             case e: MExtern => throw new AssertionError("unreachable")
             case p: MParam => idJava.typeParam(p.name)

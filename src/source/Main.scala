@@ -45,10 +45,13 @@ object Main {
     var javaClassAccessModifier: JavaAccessModifier.Value = JavaAccessModifier.Public
     var javaCppException: Option[String] = None
     var javaAnnotation: Option[String] = None
+    var javaGenerateInterfaces: Boolean = false
     var javaNullableAnnotation: Option[String] = None
     var javaNonnullAnnotation: Option[String] = None
     var javaImplementAndroidOsParcelable : Boolean = false
     var javaUseFinalForRecord: Boolean = true
+    var kotlinRecordsSerializable: Boolean = false
+    var kotlinOutFolder: Option[File] = None
     var javaGenInterface: Boolean = false
     var jniOutFolder: Option[File] = None
     var jniHeaderOutFolderOptional: Option[File] = None
@@ -133,6 +136,8 @@ object Main {
         .text("The type for translated C++ exceptions in Java (default: java.lang.RuntimeException that is not checked)")
       opt[String]("java-annotation").valueName("<annotation-class>").foreach(x => javaAnnotation = Some(x))
         .text("Java annotation (@Foo) to place on all generated Java classes")
+      opt[Boolean]("java-generate-interfaces").valueName("<true/false>").foreach(x => javaGenerateInterfaces = x)
+        .text("Whether Java interfaces should be used instead of abstract classes where possible (default: false).")
       opt[String]("java-nullable-annotation").valueName("<nullable-annotation-class>").foreach(x => javaNullableAnnotation = Some(x))
         .text("Java annotation (@Nullable) to place on all fields and return values that are optional")
       opt[String]("java-nonnull-annotation").valueName("<nonnull-annotation-class>").foreach(x => javaNonnullAnnotation = Some(x))
@@ -141,6 +146,12 @@ object Main {
         .text("all generated java classes will implement the interface android.os.Parcelable")
       opt[Boolean]("java-use-final-for-record").valueName("<use-final-for-record>").foreach(x => javaUseFinalForRecord = x)
         .text("Whether generated Java classes for records should be marked 'final' (default: true). ")
+        opt[Boolean]("kotlin-records-implement-serializable").valueName("<should-implement-serializable>").foreach(x => kotlinRecordsSerializable = x)
+        .text("Whether generated Kotlin classes for records should implement 'java.io.Serializable' (default: false). ")
+      note("")
+      opt[File]("kotlin-out").valueName("<out-folder>").foreach(x => kotlinOutFolder = Some(x))
+        .text("The output for the Kotlin files (Generator disabled if unspecified).")
+      note("")
       opt[Boolean]("java-gen-interface").valueName("<true/false>").foreach(x => javaGenInterface = x)
         .text("Generate Java interface instead of abstract class.")
       note("")
@@ -372,10 +383,13 @@ object Main {
       javaIdentStyle,
       javaCppException,
       javaAnnotation,
+      javaGenerateInterfaces,
       javaNullableAnnotation,
       javaNonnullAnnotation,
       javaImplementAndroidOsParcelable,
       javaUseFinalForRecord,
+      kotlinRecordsSerializable,
+      kotlinOutFolder,
       javaGenInterface,
       cppOutFolder,
       cppHeaderOutFolder,
