@@ -1,0 +1,16 @@
+#pragma once
+#ifdef __cplusplus
+#include "tl_expected.hpp"
+
+namespace djinni {
+
+using ::tl::unexpected;
+using ::tl::expected;
+
+template <class E>
+unexpected<typename std::decay<E>::type> make_unexpected(E &&e) {
+    return tl::unexpected<typename std::decay<E>::type>(std::forward<E>(e));
+}
+
+}
+#endif

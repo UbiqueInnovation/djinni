@@ -17,25 +17,30 @@
 #pragma once
 #ifdef __cplusplus
 
-#include "DJIMarshal+Private.h"
-#include "DataView.hpp"
+#include <cstdint>
+#include <functional>
+#include <memory>
 
 namespace djinni {
 
-struct NativeDataView {
-    using CppType = DataView;
-    using ObjcType = NSData*;
+class DataView {
+public:
+    DataView(const uint8_t* p, size_t len) : _buf(const_cast<uint8_t*>(p)), _len(len) {}
 
-    static CppType toCpp(ObjcType data) {
-        // reinterpret_cast changed because this is no longer const...
-        return DataView(reinterpret_cast<uint8_t*>(const_cast<void*>(data.bytes)), data.length);
+    DataView(DataView&&) = default;
+
+    DataView(const DataView&) = default;
+
+    uint8_t* buf() const {
+        return _buf;
+    }
+    size_t len() const {
+        return _len;
     }
 
-    static ObjcType fromCpp(const CppType& c) {
-        return [NSData dataWithBytesNoCopy:c.buf() length:c.len() freeWhenDone:NO];
-    }
-
-    using Boxed = NativeDataView;
+private:
+    uint8_t* _buf;
+    const size_t _len;
 };
 
 } // namespace djinni

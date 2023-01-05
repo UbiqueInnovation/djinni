@@ -7,6 +7,7 @@
 //
 
 #pragma once
+#ifdef __cplusplus
 #import <Foundation/Foundation.h>
 #include <chrono>
 #include <cstdint>
@@ -436,3 +437,4 @@ struct Void
 };
 
 } // namespace djinni
+#endif

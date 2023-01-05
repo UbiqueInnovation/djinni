@@ -18,6 +18,7 @@
 
 #pragma once
 #ifdef __cplusplus
+
 #include <memory>
 #include <functional>
 #include <typeindex>

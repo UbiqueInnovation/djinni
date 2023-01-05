@@ -430,5 +430,4 @@ Future<void> whenAny(U&& futures) {
 }
 
 } // namespace djinni
-
 #endif

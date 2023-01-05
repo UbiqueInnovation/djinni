@@ -16,9 +16,11 @@
 
 #pragma once
 
+#ifdef __cplusplus
+
 #include "DJIMarshal+Private.h"
 #import "DJFuture.h"
-#import "../cpp/Future.hpp"
+#import "Future.hpp"
 
 namespace djinni {
 
@@ -111,3 +113,4 @@ public:
 };
 
 } // namespace djinni
+#endif

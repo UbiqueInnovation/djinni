@@ -16,6 +16,7 @@
 
 //  This header can only be imported to Objective-C++ source code!
 
+#ifdef __cplusplus
 #import <Foundation/Foundation.h>
 #include <memory>
 
@@ -101,3 +102,4 @@ private:
 };
 
 } // namespace djinni
+#endif

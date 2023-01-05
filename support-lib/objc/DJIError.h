@@ -16,6 +16,8 @@
 
 #pragma once
 
+#ifdef __cplusplus
+
 namespace djinni {
 
 // Throws an exception for an unimplemented method call.
@@ -33,3 +35,5 @@ namespace djinni {
     catch (const std::exception & e) { \
         ::djinni::throwNSExceptionFromCurrent(__PRETTY_FUNCTION__); \
     }
+
+#endif

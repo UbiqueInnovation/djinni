@@ -1,4 +1,4 @@
-// swift-tools-version:5.3
+// swift-tools-version:5.5
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -9,11 +9,7 @@ let package = Package(
         .library(
             name: "DjinniSupport",
             targets: ["DjinniSupport"]
-        ),
-        .library(
-            name: "DjinniSupportCpp",
-            targets: ["DjinniSupportCpp"]
-        ),
+        )
     ],
     targets: [
         .target(
@@ -21,11 +17,6 @@ let package = Package(
             path: "support-lib/objc",
             publicHeadersPath: ""
         ),
-        .target(
-            name: "DjinniSupportCpp",
-            path: "support-lib/cpp",
-            publicHeadersPath: ""
-        ),
     ],
-    cxxLanguageStandard: .cxx1z
+    cxxLanguageStandard: .cxx17
 )

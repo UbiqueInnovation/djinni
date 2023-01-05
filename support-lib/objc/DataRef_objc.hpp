@@ -15,9 +15,10 @@
   */
 
 #pragma once
+#ifdef __cplusplus
 
 #include "DJIMarshal+Private.h"
-#include "../cpp/DataRef.hpp"
+#include "DataRef.hpp"
 
 namespace djinni {
 struct NativeDataRef {
@@ -39,3 +40,4 @@ struct NativeDataRef {
     using Boxed = NativeDataRef;
 };
 } // namespace djinni
+#endif
