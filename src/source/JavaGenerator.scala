@@ -269,7 +269,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           interfaces += s"Comparable<$self>"
       if (spec.javaImplementAndroidOsParcelable && r.derivingTypes.contains(DerivingType.AndroidParcelable))
           interfaces += "android.os.Parcelable"
-      val implementsSection = if (interfaces.isEmpty) "" else " implements " + interfaces.mkString(", ")
+      val implementsSection = if (interfaces.isEmpty) " implements java.io.Serializable" else " implements " + interfaces.mkString(", ")
       w.w(s"${javaClassAccessModifierString}${javaFinal}class ${self + javaTypeParams(params)}$implementsSection").braced {
         w.wl
         generateJavaConstants(w, r.consts)
