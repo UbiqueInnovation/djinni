@@ -7,7 +7,7 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
 /** Record containing constants */
-public class Constants {
+public class Constants implements java.io.Serializable {
 
     /** bool_constant has documentation. */
     public static final boolean BOOL_CONSTANT = true;

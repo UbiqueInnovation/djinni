@@ -6,12 +6,12 @@
 namespace djinni_generated {
 
 auto NativeSetRecord::toCpp(const JsType& j) -> CppType {
-    return {::djinni::Set<::djinni::String>::Boxed::toCpp(j["set"]),
+    return {::djinni::Set<::djinni::String>::Boxed::toCpp(j["sset"]),
             ::djinni::Set<::djinni::I32>::Boxed::toCpp(j["iset"])};
 }
 auto NativeSetRecord::fromCpp(const CppType& c) -> JsType {
     em::val js = em::val::object();
-    js.set("set", ::djinni::Set<::djinni::String>::Boxed::fromCpp(c.set));
+    js.set("sset", ::djinni::Set<::djinni::String>::Boxed::fromCpp(c.sset));
     js.set("iset", ::djinni::Set<::djinni::I32>::Boxed::fromCpp(c.iset));
     return js;
 }

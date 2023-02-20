@@ -11,12 +11,12 @@
 namespace testsuite {
 
 struct SetRecord final {
-    std::unordered_set<std::string> set;
+    std::unordered_set<std::string> sset;
     std::unordered_set<int32_t> iset;
 
-    SetRecord(std::unordered_set<std::string> set_,
+    SetRecord(std::unordered_set<std::string> sset_,
               std::unordered_set<int32_t> iset_)
-    : set(std::move(set_))
+    : sset(std::move(sset_))
     , iset(std::move(iset_))
     {}
 };

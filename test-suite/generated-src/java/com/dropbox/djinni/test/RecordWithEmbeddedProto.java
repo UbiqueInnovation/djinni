@@ -7,7 +7,7 @@ import djinni.test.Test.Person;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class RecordWithEmbeddedProto {
+public class RecordWithEmbeddedProto implements java.io.Serializable {
 
 
     /*package*/ final Person mPerson;

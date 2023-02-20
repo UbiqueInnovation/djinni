@@ -6,12 +6,12 @@
 @interface DBSetRecord : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;
-- (nonnull instancetype)initWithSet:(nonnull NSSet<NSString *> *)set
-                               iset:(nonnull NSSet<NSNumber *> *)iset NS_DESIGNATED_INITIALIZER;
-+ (nonnull instancetype)setRecordWithSet:(nonnull NSSet<NSString *> *)set
-                                    iset:(nonnull NSSet<NSNumber *> *)iset;
+- (nonnull instancetype)initWithSset:(nonnull NSSet<NSString *> *)sset
+                                iset:(nonnull NSSet<NSNumber *> *)iset NS_DESIGNATED_INITIALIZER;
++ (nonnull instancetype)setRecordWithSset:(nonnull NSSet<NSString *> *)sset
+                                     iset:(nonnull NSSet<NSNumber *> *)iset;
 
-@property (nonatomic, readonly, nonnull) NSSet<NSString *> * set;
+@property (nonatomic, readonly, nonnull) NSSet<NSString *> * sset;
 
 @property (nonatomic, readonly, nonnull) NSSet<NSNumber *> * iset;
 

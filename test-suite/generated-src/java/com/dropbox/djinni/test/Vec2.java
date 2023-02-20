@@ -6,7 +6,7 @@ package com.dropbox.djinni.test;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class Vec2 {
+public class Vec2 implements java.io.Serializable {
 
 
     /*package*/ final int mX;

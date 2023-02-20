@@ -6,7 +6,7 @@ package com.dropbox.djinni.test;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class SupportCopying {
+public class SupportCopying implements java.io.Serializable {
 
 
     /*package*/ final int mX;

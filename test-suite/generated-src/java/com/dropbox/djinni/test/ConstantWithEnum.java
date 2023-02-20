@@ -7,7 +7,7 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
 /** Record containing enum constant */
-public class ConstantWithEnum {
+public class ConstantWithEnum implements java.io.Serializable {
 
     @Nonnull
     public static final ConstantEnum CONST_ENUM = ConstantEnum.SOME_VALUE;

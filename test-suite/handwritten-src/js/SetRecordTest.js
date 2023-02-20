@@ -4,7 +4,7 @@ class SetRecordTest {
     }
     testCppSetToJavaSet() {
         var jsSetRecord = this.m.testsuite.TestHelpers.getSetRecord();
-        var jsSet = jsSetRecord.set;
+        var jsSet = jsSetRecord.sset;
         assertEq(3, jsSet.size);
         assertTrue(jsSet.has("StringA"));
         assertTrue(jsSet.has("StringB"));

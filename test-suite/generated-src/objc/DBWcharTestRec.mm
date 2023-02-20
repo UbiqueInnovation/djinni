@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)wcharTestRecWithS:(nonnull NSString *)s
 {
-    return [(DBWcharTestRec*)[self alloc] initWithS:s];
+    return [[self alloc] initWithS:s];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

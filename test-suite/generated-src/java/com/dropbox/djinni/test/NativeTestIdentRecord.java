@@ -6,7 +6,7 @@ package com.dropbox.djinni.test;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class NativeTestIdentRecord {
+public class NativeTestIdentRecord implements java.io.Serializable {
 
     @Nonnull
     public static final String RECORD_CONST_VALUE = "test";

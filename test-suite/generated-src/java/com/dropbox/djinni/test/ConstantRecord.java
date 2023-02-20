@@ -7,7 +7,7 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
 /** Record for use in constants */
-public class ConstantRecord {
+public class ConstantRecord implements java.io.Serializable {
 
 
     /*package*/ final int mSomeInteger;

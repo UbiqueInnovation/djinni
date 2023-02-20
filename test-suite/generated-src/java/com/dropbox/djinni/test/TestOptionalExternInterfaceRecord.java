@@ -3,7 +3,7 @@
 
 package com.dropbox.djinni.test;
 
-public final class TestOptionalExternInterfaceRecord {
+public final class TestOptionalExternInterfaceRecord implements java.io.Serializable {
 
 
     /*package*/ final com.dropbox.djinni.test.SampleInterface mSampleInterface;

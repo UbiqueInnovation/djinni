@@ -26,7 +26,7 @@ private:
 
     const ::djinni::GlobalRef<jclass> clazz { ::djinni::jniFindClass("com/dropbox/djinni/test/SetRecord") };
     const jmethodID jconstructor { ::djinni::jniGetMethodID(clazz.get(), "<init>", "(Ljava/util/HashSet;Ljava/util/HashSet;)V") };
-    const jfieldID field_mSet { ::djinni::jniGetFieldID(clazz.get(), "mSet", "Ljava/util/HashSet;") };
+    const jfieldID field_mSset { ::djinni::jniGetFieldID(clazz.get(), "mSset", "Ljava/util/HashSet;") };
     const jfieldID field_mIset { ::djinni::jniGetFieldID(clazz.get(), "mIset", "Ljava/util/HashSet;") };
 };
 

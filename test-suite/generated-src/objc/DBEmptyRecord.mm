@@ -15,7 +15,7 @@
 
 + (nonnull instancetype)emptyRecord
 {
-    return [(DBEmptyRecord*)[self alloc] init];
+    return [[self alloc] init];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

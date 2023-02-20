@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)mapListRecordWithMapList:(nonnull NSArray<NSDictionary<NSString *, NSNumber *> *> *)mapList
 {
-    return [(DBMapListRecord*)[self alloc] initWithMapList:mapList];
+    return [[self alloc] initWithMapList:mapList];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

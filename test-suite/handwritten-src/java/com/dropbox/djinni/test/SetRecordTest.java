@@ -8,7 +8,7 @@ public class SetRecordTest extends TestCase {
 
     public void testCppSetToJavaSet() {
         SetRecord jSetRecord = TestHelpers.getSetRecord();
-        HashSet<String> jSet = jSetRecord.getSet();
+        HashSet<String> jSet = jSetRecord.getSset();
         assertEquals("Size 3 expected for Set", 3, jSet.size());
         assertTrue("\"StringA\" expected but does not exist", jSet.contains("StringA"));
         assertTrue("\"StringB\" expected but does not exist", jSet.contains("StringB"));

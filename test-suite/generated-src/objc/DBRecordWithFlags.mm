@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)recordWithFlagsWithAccess:(DBAccessFlags)access
 {
-    return [(DBRecordWithFlags*)[self alloc] initWithAccess:access];
+    return [[self alloc] initWithAccess:access];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

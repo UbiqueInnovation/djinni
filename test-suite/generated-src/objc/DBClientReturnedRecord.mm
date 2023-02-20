@@ -22,9 +22,9 @@
                                                  content:(nonnull NSString *)content
                                                     misc:(nullable NSString *)misc
 {
-    return [(DBClientReturnedRecord*)[self alloc] initWithRecordId:recordId
-                                                           content:content
-                                                              misc:misc];
+    return [[self alloc] initWithRecordId:recordId
+                                  content:content
+                                     misc:misc];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

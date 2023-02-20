@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)nestedCollectionWithSetList:(nonnull NSArray<NSSet<NSString *> *> *)setList
 {
-    return [(DBNestedCollection*)[self alloc] initWithSetList:setList];
+    return [[self alloc] initWithSetList:setList];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

@@ -28,11 +28,11 @@
                                            s:(nonnull NSSet<NSNumber *> *)s
                                            m:(nonnull NSDictionary<NSNumber *, NSNumber *> *)m
 {
-    return [(DBEnumUsageRecord*)[self alloc] initWithE:e
-                                                     o:o
-                                                     l:l
-                                                     s:s
-                                                     m:m];
+    return [[self alloc] initWithE:e
+                                 o:o
+                                 l:l
+                                 s:s
+                                 m:m];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

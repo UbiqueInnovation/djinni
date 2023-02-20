@@ -7,7 +7,7 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
 /** Extended record */
-public class ExtendedRecord {
+public class ExtendedRecord implements java.io.Serializable {
 
     @Nonnull
     public static final ExtendedRecord EXTENDED_RECORD_CONST = new ExtendedRecord(

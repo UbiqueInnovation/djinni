@@ -28,7 +28,7 @@ SetRecord TestHelpers::get_set_record() {
 }
 
 bool TestHelpers::check_set_record(const SetRecord & rec) {
-    return rec.set == std::unordered_set<std::string>{ "StringA", "StringB", "StringC" };
+    return rec.sset == std::unordered_set<std::string>{ "StringA", "StringB", "StringC" };
 }
 
 static const PrimitiveList cPrimitiveList { { 1, 2, 3 } };

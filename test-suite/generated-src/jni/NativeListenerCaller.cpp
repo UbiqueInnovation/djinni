@@ -19,7 +19,7 @@ CJNIEXPORT void JNICALL Java_com_dropbox_djinni_test_ListenerCaller_00024CppProx
     } JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, )
 }
 
-CJNIEXPORT jobject JNICALL Java_com_dropbox_djinni_test_ListenerCaller_00024CppProxy_init(JNIEnv* jniEnv, jobject /*this*/, jobject j_firstL, jobject j_secondL)
+CJNIEXPORT jobject JNICALL Java_com_dropbox_djinni_test_ListenerCaller_init(JNIEnv* jniEnv, jobject /*this*/, jobject j_firstL, jobject j_secondL)
 {
     try {
         auto r = ::testsuite::ListenerCaller::init(::djinni_generated::NativeFirstListener::toCpp(jniEnv, j_firstL),

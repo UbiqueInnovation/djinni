@@ -19,8 +19,8 @@
 + (nonnull instancetype)constantRecordWithSomeInteger:(int32_t)someInteger
                                            someString:(nonnull NSString *)someString
 {
-    return [(DBConstantRecord*)[self alloc] initWithSomeInteger:someInteger
-                                                     someString:someString];
+    return [[self alloc] initWithSomeInteger:someInteger
+                                  someString:someString];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

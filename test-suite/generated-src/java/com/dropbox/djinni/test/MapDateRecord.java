@@ -7,7 +7,7 @@ import java.util.HashMap;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class MapDateRecord {
+public class MapDateRecord implements java.io.Serializable {
 
 
     /*package*/ final HashMap<String, java.util.Date> mDatesById;

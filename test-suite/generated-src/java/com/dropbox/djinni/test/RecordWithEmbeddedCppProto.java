@@ -7,7 +7,7 @@ import djinni.test2.Test2.PersistingState;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class RecordWithEmbeddedCppProto {
+public class RecordWithEmbeddedCppProto implements java.io.Serializable {
 
 
     /*package*/ final PersistingState mState;

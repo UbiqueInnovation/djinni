@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)VarnameRecordWithField:(int8_t)Field
 {
-    return [(DBVarnameRecord*)[self alloc] initWithField:Field];
+    return [[self alloc] initWithField:Field];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

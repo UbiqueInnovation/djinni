@@ -11,7 +11,7 @@ import javax.annotation.Nonnull;
  * anticipate it to be used as a prefix/suffix.  Some name styles behave
  * badly when it is.  However this test case ensures we at least don't crash.
  */
-public class VarnameRecord {
+public class VarnameRecord implements java.io.Serializable {
 
 
     /*package*/ final byte mField;

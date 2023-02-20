@@ -6,27 +6,27 @@
 
 @implementation DBSetRecord
 
-- (nonnull instancetype)initWithSet:(nonnull NSSet<NSString *> *)set
-                               iset:(nonnull NSSet<NSNumber *> *)iset
+- (nonnull instancetype)initWithSset:(nonnull NSSet<NSString *> *)sset
+                                iset:(nonnull NSSet<NSNumber *> *)iset
 {
     if (self = [super init]) {
-        _set = [set copy];
+        _sset = [sset copy];
         _iset = [iset copy];
     }
     return self;
 }
 
-+ (nonnull instancetype)setRecordWithSet:(nonnull NSSet<NSString *> *)set
-                                    iset:(nonnull NSSet<NSNumber *> *)iset
++ (nonnull instancetype)setRecordWithSset:(nonnull NSSet<NSString *> *)sset
+                                     iset:(nonnull NSSet<NSNumber *> *)iset
 {
-    return [(DBSetRecord*)[self alloc] initWithSet:set
-                                              iset:iset];
+    return [[self alloc] initWithSset:sset
+                                 iset:iset];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS
 - (NSString *)description
 {
-    return [NSString stringWithFormat:@"<%@ %p set:%@ iset:%@>", self.class, (void *)self, self.set, self.iset];
+    return [NSString stringWithFormat:@"<%@ %p sset:%@ iset:%@>", self.class, (void *)self, self.sset, self.iset];
 }
 
 #endif

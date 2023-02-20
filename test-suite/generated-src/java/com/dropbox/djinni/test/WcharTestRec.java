@@ -6,7 +6,7 @@ package com.dropbox.djinni.test;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class WcharTestRec {
+public class WcharTestRec implements java.io.Serializable {
 
 
     /*package*/ final String mS;

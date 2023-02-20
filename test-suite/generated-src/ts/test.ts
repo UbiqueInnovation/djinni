@@ -601,7 +601,7 @@ export interface /*record*/ RecordWithNestedDerivings {
 }
 
 export interface /*record*/ SetRecord {
-    set: Set<string>;
+    sset: Set<string>;
     iset: Set<number>;
 }
 

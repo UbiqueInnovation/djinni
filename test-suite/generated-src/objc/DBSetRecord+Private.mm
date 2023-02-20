@@ -10,14 +10,14 @@ namespace djinni_generated {
 auto SetRecord::toCpp(ObjcType obj) -> CppType
 {
     assert(obj);
-    return {::djinni::Set<::djinni::String>::toCpp(obj.set),
+    return {::djinni::Set<::djinni::String>::toCpp(obj.sset),
             ::djinni::Set<::djinni::I32>::toCpp(obj.iset)};
 }
 
 auto SetRecord::fromCpp(const CppType& cpp) -> ObjcType
 {
-    return [[DBSetRecord alloc] initWithSet:(::djinni::Set<::djinni::String>::fromCpp(cpp.set))
-                                       iset:(::djinni::Set<::djinni::I32>::fromCpp(cpp.iset))];
+    return [[DBSetRecord alloc] initWithSset:(::djinni::Set<::djinni::String>::fromCpp(cpp.sset))
+                                        iset:(::djinni::Set<::djinni::I32>::fromCpp(cpp.iset))];
 }
 
 } // namespace djinni_generated

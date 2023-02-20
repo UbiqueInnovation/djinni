@@ -6,7 +6,7 @@ package com.dropbox.djinni.test;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class RecordUsingExtendedRecord {
+public class RecordUsingExtendedRecord implements java.io.Serializable {
 
     @Nonnull
     public static final RecordUsingExtendedRecord CR = new RecordUsingExtendedRecord(

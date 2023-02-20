@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)primitiveListWithList:(nonnull NSArray<NSNumber *> *)list
 {
-    return [(DBPrimitiveList*)[self alloc] initWithList:list];
+    return [[self alloc] initWithList:list];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS

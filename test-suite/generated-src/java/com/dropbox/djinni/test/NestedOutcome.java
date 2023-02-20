@@ -6,7 +6,7 @@ package com.dropbox.djinni.test;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-public class NestedOutcome {
+public class NestedOutcome implements java.io.Serializable {
 
 
     /*package*/ final com.snapchat.djinni.Outcome<Integer, String> mO;
