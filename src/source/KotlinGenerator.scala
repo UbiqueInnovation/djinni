@@ -88,16 +88,16 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
   override def generateModule(decls: Seq[InternTypeDecl]) {
     if (spec.jniUseOnLoad) {
       writeKotlinFile(moduleClass, s"${spec.moduleName} Module", List.empty, w => {
-        w.wl(s"class $moduleClass").braced {
-          w.wl("companion object").braced {
-            w.wl("init").braced {
-              w.wl("if (System.getProperty(\"java.vm.vendor\") == \"The Android Project\")").braced {
+        w.w(s"class $moduleClass").braced {
+          w.w("companion object").braced {
+            w.w("init").braced {
+              w.w("if (System.getProperty(\"java.vm.vendor\") == \"The Android Project\")").braced {
                 w.wl("Guard.initialize();")
               }
             }
           }
-          w.wl("private class Guard").braced {
-            w.wl("companion object").braced {
+          w.w("private class Guard").braced {
+            w.w("companion object").braced {
               w.wl("@JvmStatic")
               w.wl("external fun initialize()")
             }
@@ -139,11 +139,11 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
 
     def writeModuleInitializer(w: IndentWriter) = {
       if (spec.jniUseOnLoad) {
-        w.wl("init").braced {
-          w.wl("try").braced {
+        w.w("init").braced {
+          w.w("try").braced {
             w.wl(s"Class.forName(${q(spec.javaPackage.getOrElse("") + "." + moduleClass)})")
           }
-          w.wl("catch (e: ClassNotFoundException)").braced {
+          w.w("catch (e: ClassNotFoundException)").braced {
             w.wl(s"throw IllegalStateException(${q("Failed to initialize djinni module")}, e)")
           }
         }
