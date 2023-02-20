@@ -6,7 +6,7 @@ package com.snapchat.djinni.benchmark;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-/*package*/ final class RecordSixInt {
+/*package*/ final class RecordSixInt implements java.io.Serializable {
 
 
     /*package*/ final long mI1;

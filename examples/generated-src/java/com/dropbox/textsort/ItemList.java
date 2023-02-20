@@ -7,10 +7,10 @@ import java.util.ArrayList;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
-/*package*/ final class ItemList {
+/*package*/ final class ItemList implements java.io.Serializable {
 
 
-    protected ArrayList<String> mItems;
+    /*package*/ final ArrayList<String> mItems;
 
     public ItemList(
             @Nonnull ArrayList<String> items) {
@@ -20,11 +20,6 @@ import javax.annotation.Nonnull;
     @Nonnull
     public ArrayList<String> getItems() {
         return mItems;
-    }
-
-    @Nonnull
-    public void setItems(ArrayList<String> mItems) {
-        this.mItems = mItems;
     }
 
     @Override

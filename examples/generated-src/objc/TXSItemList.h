@@ -9,6 +9,6 @@
 - (nonnull instancetype)initWithItems:(nonnull NSArray<NSString *> *)items NS_DESIGNATED_INITIALIZER;
 + (nonnull instancetype)itemListWithItems:(nonnull NSArray<NSString *> *)items;
 
-@property (nonatomic, nonnull) NSArray<NSString *> * items;
+@property (nonatomic, readonly, nonnull) NSArray<NSString *> * items;
 
 @end

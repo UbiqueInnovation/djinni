@@ -16,7 +16,7 @@
 
 + (nonnull instancetype)itemListWithItems:(nonnull NSArray<NSString *> *)items
 {
-    return [(TXSItemList*)[self alloc] initWithItems:items];
+    return [[self alloc] initWithItems:items];
 }
 
 #ifndef DJINNI_DISABLE_DESCRIPTION_METHODS
