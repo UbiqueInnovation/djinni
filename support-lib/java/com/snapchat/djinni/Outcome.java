@@ -16,13 +16,18 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
 import java.util.Objects;
 
+@Keep
 public abstract class Outcome<Result, Error> {
 
+    @Keep
     public interface ResultHandler<R, Result> {
         public R apply(Result r);
     }
+    @Keep
     public interface ErrorHandler<R, Error> {
         public R apply(Error e);
     }

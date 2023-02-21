@@ -16,11 +16,15 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+@Keep
 class SharedState<T> {
 
+    @Keep
     interface Continuation<U> {
         void handleResult(SharedState<U> res);
     }

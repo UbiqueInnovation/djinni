@@ -16,10 +16,13 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
+@Keep
 public class Future<T> implements java.util.concurrent.Future<T> {
     // Does not support cancel on this object
     public boolean cancel(boolean mayInterruptIfRunning) {
@@ -57,11 +60,13 @@ public class Future<T> implements java.util.concurrent.Future<T> {
     }
     
     // Handler routine for type U that does not return a value
+    @Keep
     @FunctionalInterface
     public interface FutureHandler<U> {
         public void handleResult(Future<U> res) throws Throwable;
     }
     // Handler routine for type U that returns a value of type R
+    @Keep
     @FunctionalInterface
     public interface FutureHandlerWithReturn<U, R> {
         public R handleResult(Future<U> res) throws Throwable;

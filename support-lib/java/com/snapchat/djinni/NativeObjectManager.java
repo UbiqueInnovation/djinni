@@ -16,6 +16,8 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
 import java.lang.ref.PhantomReference;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
@@ -42,14 +44,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * The remove/destroy loop runs in a dedicated low priority cleanup thread
  * outside of the Java GC.
  */
+@Keep
 public class NativeObjectManager {
 
     // private ----------------------------------
 
+    @Keep
     private static class Holder {
         static final NativeObjectManager instance = new NativeObjectManager();
     }
 
+    @Keep
     private static class NativeObjectWrapper extends PhantomReference<Object> {
 
         private final long mNativeRef;

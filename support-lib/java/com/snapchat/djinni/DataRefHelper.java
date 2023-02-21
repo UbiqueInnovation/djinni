@@ -16,6 +16,9 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
+@Keep
 public final class DataRefHelper {
     public static native void nativeDestroy(long nativeRef);
 }

@@ -16,8 +16,11 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
 import java.util.concurrent.atomic.AtomicReference;
 
+@Keep
 public class Promise<T> {
 
     private AtomicReference<SharedState<T>> _sharedState;

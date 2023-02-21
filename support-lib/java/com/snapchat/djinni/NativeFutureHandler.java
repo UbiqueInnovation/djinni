@@ -16,6 +16,9 @@
 
 package com.snapchat.djinni;
 
+import androidx.annotation.Keep;
+
+@Keep
 public class NativeFutureHandler<T> implements Future.FutureHandler<T> {
     private final long mNativeFunc;
     private final long mNativePromise;
