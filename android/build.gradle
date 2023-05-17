@@ -1,0 +1,95 @@
+buildscript {
+	ext.kotlin_version = "1.8.21"
+	repositories {
+		google()
+		mavenCentral()
+	}
+	dependencies {
+		classpath "com.android.tools.build:gradle:7.4.2"
+		classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+		classpath 'com.vanniktech:gradle-maven-publish-plugin:0.25.2'
+		classpath 'org.jetbrains.dokka:dokka-gradle-plugin:1.7.10'
+	}
+}
+
+repositories {
+	google()
+	mavenCentral()
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'com.vanniktech.maven.publish'
+
+import com.vanniktech.maven.publish.SonatypeHost
+
+android {
+	compileSdkVersion 33
+
+	defaultConfig {
+		minSdkVersion 26
+		targetSdkVersion 33
+		versionName VERSION_NAME
+		versionCode Integer.parseInt(VERSION_CODE)
+
+		testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+	}
+
+	sourceSets {
+		main {
+			java {
+				srcDir '../support-lib/java'
+			}
+		}
+	}
+}
+
+ext.readProperty = { paramName -> readPropertyWithDefault(paramName, null) }
+ext.readPropertyWithDefault = { paramName, defaultValue ->
+	if (project.hasProperty(paramName)) {
+		return project.getProperties().get(paramName)
+	} else {
+		Properties properties = new Properties()
+		if (project.rootProject.file('local.properties').exists()) {
+			properties.load(project.rootProject.file('local.properties').newDataInputStream())
+		}
+		if (properties.getProperty(paramName) != null) {
+			return properties.getProperty(paramName)
+		} else {
+			return defaultValue
+		}
+	}
+}
+
+publishing {
+	repositories {
+		maven {
+			name = "UbiqueMaven"
+			url = System.getenv('UBIQUE_ARTIFACTORY_URL') ?: ''
+			credentials {
+				username = System.getenv('UBIQUE_ARTIFACTORY_USER') ?: ''
+				password = System.getenv('UBIQUE_ARTIFACTORY_PASS') ?: ''
+			}
+		}
+	}
+}
+
+mavenPublishing {
+	publishToMavenCentral(SonatypeHost.S01, true)
+	signAllPublications()
+}
+
+dependencies {
+	implementation fileTree(dir: 'libs', include: ['*.jar'])
+	implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+	implementation "androidx.annotation:annotation:1.6.0"
+
+	testImplementation 'junit:junit:4.13.2'
+	androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+	androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+clean.doLast {
+	project.delete("${projectDir}/build")
+	project.delete("${projectDir}/.cxx")
+}
