@@ -15,14 +15,13 @@ def djinni_deps():
         ],
         sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
     )
-    rules_scala_version = "e7a948ad1948058a7a5ddfbd9d1629d6db839933"
+    rules_scala_version = "5.0.0"
     maybe(
         name = "io_bazel_rules_scala",
         repo_rule = http_archive,
         strip_prefix = "rules_scala-{}".format(rules_scala_version),
-        type = "zip",
-        url = "https://github.com/bazelbuild/rules_scala/archive/{}.zip".format(rules_scala_version),
-        sha256 = "76e1abb8a54f61ada974e6e9af689c59fd9f0518b49be6be7a631ce9fa45f236",
+        url = "https://github.com/bazelbuild/rules_scala/archive/refs/tags/v{}.tar.gz".format(rules_scala_version),
+        sha256 = "141a3919b37c80a846796f792dcf6ea7cd6e7b7ca4297603ca961cd22750c951",
     )    
     protobuf_version = "3.12.4"
     maybe(
