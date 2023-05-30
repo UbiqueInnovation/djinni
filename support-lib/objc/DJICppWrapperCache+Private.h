@@ -15,7 +15,7 @@
 //
 
 //  This header can only be imported to Objective-C++ source code!
-
+#ifdef __cplusplus
 #import <Foundation/Foundation.h>
 #include <memory>
 
@@ -60,3 +60,4 @@ ObjcType * get_cpp_proxy(const CppPtrType & cppRef) {
 }
 
 } // namespace djinni
+#endif

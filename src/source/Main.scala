@@ -12,11 +12,13 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
 
-import java.io.{IOException, FileNotFoundException, FileInputStream, InputStreamReader, File, BufferedWriter, FileWriter}
+import java.io.{BufferedWriter, File, FileNotFoundException, FileWriter, IOException}
 
 import djinni.generatorTools._
 
@@ -30,6 +32,7 @@ object Main {
     var cppIncludePrefix: String = ""
     var cppExtendedRecordIncludePrefix: String = ""
     var cppFileIdentStyle: IdentConverter = IdentStyle.underLower
+    var cppBaseLibIncludePrefix: String = ""
     var cppOptionalTemplate: String = "std::optional"
     var cppOptionalHeader: String = "<optional>"
     var cppEnumHashWorkaround : Boolean = true
@@ -49,6 +52,7 @@ object Main {
     var javaUseFinalForRecord: Boolean = true
     var kotlinRecordsSerializable: Boolean = false
     var kotlinOutFolder: Option[File] = None
+    var javaGenInterface: Boolean = false
     var jniOutFolder: Option[File] = None
     var jniHeaderOutFolderOptional: Option[File] = None
     var jniNamespace: String = "djinni_generated"
@@ -58,6 +62,8 @@ object Main {
     var jniFileIdentStyleOptional: Option[IdentConverter] = None
     var jniBaseLibClassIdentStyleOptional: Option[IdentConverter] = None
     var jniBaseLibIncludePrefix: String = ""
+    var jniUseOnLoad: Boolean = false
+    var jniFunctionPrologueFile: Option[String] = None
     var cppHeaderOutFolderOptional: Option[File] = None
     var cppExt: String = "cpp"
     var cppHeaderExt: String = "hpp"
@@ -73,21 +79,31 @@ object Main {
     var objcIncludePrefix: String = ""
     var objcExtendedRecordIncludePrefix: String = ""
     var objcSwiftBridgingHeaderName: Option[String] = None
+    var objcGenProtocol: Boolean = false
+    var objcDisableClassCtor: Boolean = false
     var objcClosedEnums: Boolean = false
     var objcppIncludePrefix: String = ""
     var objcppIncludeCppPrefix: String = ""
     var objcppIncludeObjcPrefixOptional: Option[String] = None
+    var objcppFunctionPrologueFile: Option[String] = None
+    var objcppDisableExceptionTranslation: Boolean = false
     var objcFileIdentStyleOptional: Option[IdentConverter] = None
+    var objcStrictProtocol: Boolean = true
     var objcppNamespace: String = "djinni_generated"
     var objcBaseLibIncludePrefix: String = ""
+    var wasmOutFolder: Option[File] = None
+    var wasmIncludePrefix: String = ""
+    var wasmIncludeCppPrefix: String = ""
+    var wasmBaseLibIncludePrefix: String = ""
+    var wasmOmitConstants: Boolean = false
+    var wasmNamespace: Option[String] = None
+    var wasmOmitNsAlias: Boolean = false
+    var jsIdentStyle = IdentStyle.jsDefault
+    var tsOutFolder: Option[File] = None
+    var tsModule: String = "module"
     var inFileListPath: Option[File] = None
     var outFileListPath: Option[File] = None
     var skipGeneration: Boolean = false
-    var ubFoundationHeader: Option[String] = None
-    var ubGenerateSetters: Boolean = false
-    var ubMethodPrefix: String = "ub"
-    var ubObjcRecordBaseClass: Option[String] = None
-    var ubReadonlyProperties: Boolean = true
     var yamlOutFolder: Option[File] = None
     var yamlOutFile: Option[String] = None
     var yamlPrefix: String = ""
@@ -130,11 +146,14 @@ object Main {
         .text("all generated java classes will implement the interface android.os.Parcelable")
       opt[Boolean]("java-use-final-for-record").valueName("<use-final-for-record>").foreach(x => javaUseFinalForRecord = x)
         .text("Whether generated Java classes for records should be marked 'final' (default: true). ")
-      opt[Boolean]("kotlin-records-implement-serializable").valueName("<should-implement-serializable>").foreach(x => kotlinRecordsSerializable = x)
+        opt[Boolean]("kotlin-records-implement-serializable").valueName("<should-implement-serializable>").foreach(x => kotlinRecordsSerializable = x)
         .text("Whether generated Kotlin classes for records should implement 'java.io.Serializable' (default: false). ")
       note("")
       opt[File]("kotlin-out").valueName("<out-folder>").foreach(x => kotlinOutFolder = Some(x))
         .text("The output for the Kotlin files (Generator disabled if unspecified).")
+      note("")
+      opt[Boolean]("java-gen-interface").valueName("<true/false>").foreach(x => javaGenInterface = x)
+        .text("Generate Java interface instead of abstract class.")
       note("")
       opt[File]("cpp-out").valueName("<out-folder>").foreach(x => cppOutFolder = Some(x))
         .text("The output folder for C++ files (Generator disabled if unspecified).")
@@ -142,6 +161,8 @@ object Main {
         .text("The output folder for C++ header files (default: the same as --cpp-out).")
       opt[String]("cpp-include-prefix").valueName("<prefix>").foreach(cppIncludePrefix = _)
         .text("The prefix for #includes of header files from C++ files.")
+      opt[String]("cpp-base-lib-include-prefix").valueName("...").foreach(x => cppBaseLibIncludePrefix = x)
+        .text("The C++ base library's include path, relative to the C++ classes.")
       opt[String]("cpp-namespace").valueName("...").foreach(x => cppNamespace = x)
         .text("The namespace name to use for generated C++ classes.")
       opt[String]("cpp-ext").valueName("<ext>").foreach(cppExt = _)
@@ -175,6 +196,10 @@ object Main {
         .text("The namespace name to use for generated JNI C++ classes.")
       opt[String]("jni-base-lib-include-prefix").valueName("...").foreach(x => jniBaseLibIncludePrefix = x)
         .text("The JNI base library's include path, relative to the JNI C++ classes.")
+      opt[Boolean]("jni-use-on-load-initializer").valueName("<true/false>").foreach(x => jniUseOnLoad = x)
+        .text("If true, djinni will use RegisterNativeMethods to bind JNI functions, instead of the Java_* style symbol exports")
+      opt[String]("jni-function-prologue-file").valueName("<header-file>").foreach(x => jniFunctionPrologueFile = Some(x))
+        .text("User header file to include in generated JNI C++ classes.")
       note("")
       opt[File]("objc-out").valueName("<out-folder>").foreach(x => objcOutFolder = Some(x))
         .text("The output folder for Objective-C files (Generator disabled if unspecified).")
@@ -186,8 +211,15 @@ object Main {
         .text("The prefix for #import of header files from Objective-C files.")
       opt[String]("objc-swift-bridging-header").valueName("<name>").foreach(x => objcSwiftBridgingHeaderName = Some(x))
         .text("The name of Objective-C Bridging Header used in XCode's Swift projects.")
+      opt[Boolean]("objc-gen-protocol").valueName("<true/false>").foreach(x => objcGenProtocol = x)
+        .text("Generate Objective-C protocols for native (+c) only interfaces.")
+      opt[Boolean]("objc-disable-class-ctor").valueName("<true/false>").foreach(x => objcDisableClassCtor = x)
+        .text("Disable generating Objective-C class init helper method.")
       opt[Boolean]("objc-closed-enums").valueName("<true/false>").foreach(x => objcClosedEnums = x)
         .text("All generated Objective-C enums will be NS_CLOSED_ENUM (default: false). ")
+      opt[Boolean]("objc-strict-protocols")
+        .valueName("<true/false>").foreach(x => objcStrictProtocol = x)
+        .text("All generated @protocol will implement <NSObject> (default: true). ")
       note("")
       opt[File]("objcpp-out").valueName("<out-folder>").foreach(x => objcppOutFolder = Some(x))
         .text("The output folder for private Objective-C++ files (Generator disabled if unspecified).")
@@ -205,8 +237,31 @@ object Main {
         .text("The prefix path for #import of the extended record Objective-C header (.h) files")
       opt[String]("objcpp-namespace").valueName("<prefix>").foreach(objcppNamespace = _)
         .text("The namespace name to use for generated Objective-C++ classes.")
+      opt[String]("objcpp-function-prologue-file").valueName("<header-file>").foreach(x => objcppFunctionPrologueFile = Some(x))
+        .text("User header file to include in generated Objective-C++ classes.")
+      opt[Boolean]("objcpp-disable-exception-translation").valueName("<true/false>").foreach(x => objcppDisableExceptionTranslation = x)
+        .text("Disable generating C++ -> Objective-C exception translation")
       opt[String]("objc-base-lib-include-prefix").valueName("...").foreach(x => objcBaseLibIncludePrefix = x)
         .text("The Objective-C++ base library's include path, relative to the Objective-C++ classes.")
+      note("")
+      opt[File]("wasm-out").valueName("<out-folder>").foreach(x => wasmOutFolder = Some(x))
+        .text("The output for the WASM bridge C++ files (Generator disabled if unspecified).")
+      opt[String]("wasm-include-prefix").valueName("<prefix>").foreach(wasmIncludePrefix = _)
+        .text("The prefix for #includes of WASM header files from WASM C++ files.")
+      opt[String]("wasm-include-cpp-prefix").valueName("<prefix>").foreach(wasmIncludeCppPrefix = _)
+        .text("The prefix for #includes of the main header files from WASM C++ files.")
+      opt[String]("wasm-base-lib-include-prefix").valueName("...").foreach(x => wasmBaseLibIncludePrefix = x)
+        .text("The WASM base library's include path, relative to the WASM C++ classes.")
+      opt[Boolean]("wasm-omit-constants").valueName("<true/false>").foreach(x => wasmOmitConstants = x)
+        .text("Omit the generation of consts and enums in wasm, making them only accessible through TypeScript.")
+      opt[String]("wasm-namespace").valueName("...").foreach(x => wasmNamespace = Some(x))
+        .text("The namespace to use for generated Wasm classes.")
+      opt[Boolean]("wasm-omit-namespace-alias").valueName("<true/false>").foreach(x => wasmOmitNsAlias = x)
+        .text("Omit the generation of namespace aliases for classes. Namespaces will be prepended to class names instead.")
+      opt[File]("ts-out").valueName("<out-folder>").foreach(x => tsOutFolder = Some(x))
+        .text("The output for the TypeScript interface files (Generator disabled if unspecified).")
+      opt[String]("ts-module").valueName("<name>").foreach(tsModule = _)
+        .text("TypeScript declaration module name (default: \"module\").")
       note("")
       opt[File]("yaml-out").valueName("<out-folder>").foreach(x => yamlOutFolder = Some(x))
         .text("The output folder for YAML files (Generator disabled if unspecified).")
@@ -221,19 +276,8 @@ object Main {
         .text("Optional file in which to write the list of output files produced.")
       opt[Boolean]("skip-generation").valueName("<true/false>").foreach(x => skipGeneration = x)
         .text("Way of specifying if file generation should be skipped (default: false)")
-      opt[String]("ub-foundation-header").valueName("<name>").foreach(x => ubFoundationHeader = Some(x))
-        .text("Foundation import added to each C++ header file. Format: \"<Foundation/Foundation.h>\" (default: None)")
-      opt[Boolean]("ub-generate-setters").valueName("<true/false>").foreach(x => ubGenerateSetters = x)
-        .text("Generate custom setters for non-primitive fields in records (default: false).")
-      opt[String]("ub-method-prefix").valueName("<name>").foreach(x => ubMethodPrefix = x)
-        .text("Prefix added to custom methods when generating setters (default: \"ub\").")
-      opt[String]("ub-objc-record-base-class").valueName("<name>").foreach(x => ubObjcRecordBaseClass = Some(x))
-        .text("Base class of the generated Objective-C classes")
-      opt[Boolean]("ub-readonly-properties").valueName("<true/false>").foreach(x => ubReadonlyProperties = x)
-        .text("Use readonly properties on records (default: true)")
 
-
-      note("\nIdentifier styles (ex: \"FooBar\", \"fooBar\", \"foo_bar\", \"FOO_BAR\", \"m_fooBar\")\n")
+      note("\nIdentifier styles (ex: \"FooBar\", \"fooBar\", \"foo_bar\", \"FOO_BAR\", \"m_fooBar\")\nUse an exclamation mark to apply stricty, even on ALL_CAPS identifiers (ex: \"FooBar!\")\n")
       identStyle("ident-java-enum",      c => { javaIdentStyle = javaIdentStyle.copy(enum = c) })
       identStyle("ident-java-field",     c => { javaIdentStyle = javaIdentStyle.copy(field = c) })
       identStyle("ident-java-type",      c => { javaIdentStyle = javaIdentStyle.copy(ty = c) })
@@ -253,8 +297,8 @@ object Main {
       identStyle("ident-objc-type",       c => { objcIdentStyle = objcIdentStyle.copy(ty = c) })
       identStyle("ident-objc-type-param", c => { objcIdentStyle = objcIdentStyle.copy(typeParam = c) })
       identStyle("ident-objc-local",      c => { objcIdentStyle = objcIdentStyle.copy(local = c) })
+      identStyle("ident-objc-const",      c => { objcIdentStyle = objcIdentStyle.copy(const = c) })
       identStyle("ident-objc-file",       c => { objcFileIdentStyleOptional = Some(c) })
-
     }
 
     if (!argParser.parse(args)) {
@@ -286,7 +330,7 @@ object Main {
     } else {
       None
     }
-    val idl = try {
+    val (idl, flags) = try {
       (new Parser(idlIncludePaths)).parseFile(idlFile, inFileListWriter)
     }
     catch {
@@ -297,6 +341,12 @@ object Main {
     finally {
       if (inFileListWriter.isDefined) {
         inFileListWriter.get.close()
+      }
+    }
+
+    if (!flags.isEmpty) {
+      if (!argParser.parse(flags.map({_.split(" ", 2)}).flatten :+ "--idl" :+ idlFile.getName())) {
+        System.exit(1); return
       }
     }
 
@@ -340,6 +390,7 @@ object Main {
       javaUseFinalForRecord,
       kotlinRecordsSerializable,
       kotlinOutFolder,
+      javaGenInterface,
       cppOutFolder,
       cppHeaderOutFolder,
       cppIncludePrefix,
@@ -347,6 +398,7 @@ object Main {
       cppNamespace,
       cppIdentStyle,
       cppFileIdentStyle,
+      cppBaseLibIncludePrefix,
       cppOptionalTemplate,
       cppOptionalHeader,
       cppEnumHashWorkaround,
@@ -362,6 +414,8 @@ object Main {
       jniClassIdentStyle,
       jniFileIdentStyle,
       jniBaseLibIncludePrefix,
+      jniUseOnLoad,
+      jniFunctionPrologueFile,
       cppExt,
       cppHeaderExt,
       objcOutFolder,
@@ -376,21 +430,31 @@ object Main {
       objcppIncludeCppPrefix,
       objcppIncludeObjcPrefix,
       objcppNamespace,
+      objcppFunctionPrologueFile,
+      objcppDisableExceptionTranslation,
       objcBaseLibIncludePrefix,
       objcSwiftBridgingHeaderWriter,
       objcSwiftBridgingHeaderName,
+      objcGenProtocol,
+      objcDisableClassCtor,
       objcClosedEnums,
+      objcStrictProtocol,
+      wasmOutFolder,
+      wasmIncludePrefix,
+      wasmIncludeCppPrefix,
+      wasmBaseLibIncludePrefix,
+      wasmOmitConstants,
+      wasmNamespace,
+      wasmOmitNsAlias,
+      jsIdentStyle,
+      tsOutFolder,
+      tsModule,
       outFileListWriter,
       skipGeneration,
-      ubFoundationHeader,
-      ubGenerateSetters,
-      ubMethodPrefix,
-      ubObjcRecordBaseClass,
-      ubReadonlyProperties,
       yamlOutFolder,
       yamlOutFile,
-      yamlPrefix)
-
+      yamlPrefix,
+      idlFile.getName.stripSuffix(".djinni"))
 
     try {
       val r = generate(idl, outSpec)

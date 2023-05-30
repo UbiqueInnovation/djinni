@@ -1,3 +1,21 @@
+/**
+  * Copyright 2014 Dropbox, Inc.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *    http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
+  */
+
 package djinni
 
 import djinni.ast._
@@ -17,6 +35,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
     case e: Enum => idCpp.enumType(name)
     case i: Interface => idCpp.ty(name)
     case r: Record => idCpp.ty(name)
+    case p: ProtobufMessage => idCpp.ty(name)
   }
 
   override def fqTypename(tm: MExpr): String = toCppType(tm, Some(spec.cppNamespace), Seq())
@@ -24,6 +43,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
     case e: Enum => withNs(Some(spec.cppNamespace), idCpp.enumType(name))
     case i: Interface => withNs(Some(spec.cppNamespace), idCpp.ty(name))
     case r: Record => withNs(Some(spec.cppNamespace), idCpp.ty(name))
+    case p: ProtobufMessage => withNs(Some(p.cpp.ns), idCpp.ty(name))
   }
 
   def paramType(tm: MExpr, scopeSymbols: Seq[String]): String = toCppParamType(tm, None, scopeSymbols)
@@ -56,7 +76,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
     case MDate => List(ImportRef("<chrono>"))
     case MBinary => List(ImportRef("<vector>"), ImportRef("<cstdint>"))
     case MOptional => List(ImportRef(spec.cppOptionalHeader))
-    case MList => List(ImportRef("<vector>"))
+    case MList | MArray => List(ImportRef("<vector>"))
     case MSet => List(ImportRef("<unordered_set>"))
     case MMap => List(ImportRef("<unordered_map>"))
     case d: MDef => d.body match {
@@ -73,7 +93,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
       case e: Enum =>
         if (d.name != exclude) {
           if (forwardDeclareOnly) {
-            val underlyingType = if(e.flags) " : unsigned" else ""
+            val underlyingType = if(e.flags) " : int32_t" else ""
             List(DeclRef(s"enum class ${typename(d.name, d.body)}${underlyingType};", Some(spec.cppNamespace)))
           } else {
             List(ImportRef(include(d.name)))
@@ -91,14 +111,23 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
           case Some(nnHdr) => ImportRef(nnHdr) :: base
           case _ => base
         }
+      case p: ProtobufMessage =>
+        List(ImportRef(p.cpp.header))
     }
     case e: MExtern => e.defType match {
       // Do not forward declare extern types, they might be in arbitrary namespaces.
       // This isn't a problem as extern types cannot cause dependency cycles with types being generated here
       case DInterface => List(ImportRef("<memory>"), ImportRef(e.cpp.header))
-      case _ => List(ImportRef(e.cpp.header))
+      case _ => List(ImportRef(resolveExtCppHdr(e.cpp.header)))
     }
+    case p: MProtobuf =>
+      List(ImportRef(p.body.cpp.header))
     case p: MParam => List()
+    case MVoid => List()
+  }
+
+  def resolveExtCppHdr(path: String) = {
+    path.replaceAll("\\$", spec.cppBaseLibIncludePrefix);
   }
 
   def cppReferences(m: Meta, exclude: String, forwardDeclareOnly: Boolean): Seq[SymbolReference] = {
@@ -153,7 +182,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
       case MDate => "std::chrono::system_clock::time_point"
       case MBinary => "std::vector<uint8_t>"
       case MOptional => spec.cppOptionalTemplate
-      case MList => "std::vector"
+      case MList | MArray => "std::vector"
       case MSet => "std::unordered_set"
       case MMap => "std::unordered_map"
       case d: MDef =>
@@ -167,6 +196,8 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
         case _ => e.cpp.typename
       }
       case p: MParam => idCpp.typeParam(p.name)
+      case p: MProtobuf => withNs(Some(p.body.cpp.ns), p.name)
+      case MVoid => "void"
     }
     def expr(tm: MExpr): String = {
       spec.cppNnType match {
@@ -192,14 +223,12 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
             case _ => base(tm.base) + args
           }
         }
-      case None =>
-        if (isOptionalInterface(tm)) {
-          // otherwise, interfaces are always plain old shared_ptr
-          expr(tm.args.head)
-        } else {
-          val args = if (tm.args.isEmpty) "" else tm.args.map(expr).mkString("<", ", ", ">")
-          base(tm.base) + args
-        }
+        case None =>
+          val ty = if (isOptionalInterface(tm)) { tm.args.head } else { tm }
+          val prefix = if (!isInterface(ty)) {""} else { /* isInterface */
+            if (isOptional(tm)) {"/*nullable*/ "} else {"/*not-null*/ "}}
+          val args = if (ty.args.isEmpty) "" else ty.args.map(expr).mkString("<", ", ", ">")
+          prefix + base(ty.base) + args
       }
     }
     expr(tm)
@@ -224,6 +253,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
     case i: Interface => false
     case r: Record => false
     case e: Enum => true
+    case p: ProtobufMessage => false
   }
 
   // this can be used in c++ generation to know whether a const& should be applied to the parameter or not
@@ -233,4 +263,26 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
     val valueType = cppType
     if(byValue(tm)) valueType else refType
   }
+
+  private def moveOnly(tm: MExpr): Boolean = tm.base match {
+    case d: MDef => d.body match {
+      case r: Record => r.fields.exists(t => moveOnly(t.ty.resolved))
+      case _  => false
+    }
+    case e: MExtern => e.defType match {
+      case DRecord => e.cpp.moveOnly
+      case _ => false
+    }
+    case MOptional => moveOnly(tm.args.head)
+    case _ => false
+  }
+
+  def maybeMove(expr: String, tm: MExpr) = {
+    if (moveOnly(tm))
+      s"std::move($expr)"
+    else
+      expr
+  }
+
+  def maybeMove(expr: String, ty: TypeRef):String = maybeMove(expr, ty.resolved)
 }

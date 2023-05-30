@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni.ast
@@ -21,13 +23,14 @@ import djinni.ast.Record.DerivingType.DerivingType
 import djinni.meta.MExpr
 import djinni.syntax.Loc
 
-case class IdlFile(imports: Seq[FileRef], typeDecls: Seq[TypeDecl])
+case class IdlFile(imports: Seq[FileRef], typeDecls: Seq[TypeDecl], flags: Seq[String])
 
 abstract sealed class FileRef {
   val file: File
 }
 case class IdlFileRef(override val file: File) extends FileRef
 case class ExternFileRef(override val file: File) extends FileRef
+case class ProtobufFileRef(override val file: File) extends FileRef
 
 case class Ident(name: String, file: File, loc: Loc)
 class ConstRef(ident: Ident) extends Ident(ident.name, ident.file, ident.loc)
@@ -45,10 +48,11 @@ sealed abstract class TypeDecl {
 }
 case class InternTypeDecl(override val ident: Ident, override val params: Seq[TypeParam], override val body: TypeDef, doc: Doc, override val origin: String) extends TypeDecl
 case class ExternTypeDecl(override val ident: Ident, override val params: Seq[TypeParam], override val body: TypeDef, properties: Map[String, Any], override val origin: String) extends TypeDecl
+case class ProtobufTypeDecl(override val ident: Ident, override val params: Seq[TypeParam], override val body: TypeDef, override val origin: String) extends TypeDecl
 
-case class Ext(java: Boolean, cpp: Boolean, objc: Boolean) {
+case class Ext(java: Boolean, cpp: Boolean, objc: Boolean, js: Boolean) {
   def any(): Boolean = {
-    java || cpp || objc
+    java || cpp || objc || js
   }
 }
 
@@ -75,13 +79,21 @@ case class Record(ext: Ext, fields: Seq[Field], consts: Seq[Const], derivingType
 object Record {
   object DerivingType extends Enumeration {
     type DerivingType = Value
-    val Eq, Ord, AndroidParcelable = Value
+    val Eq, Ord, AndroidParcelable, NSCopying = Value
   }
 }
 
 case class Interface(ext: Ext, methods: Seq[Interface.Method], consts: Seq[Const]) extends TypeDef
 object Interface {
-  case class Method(ident: Ident, params: Seq[Field], ret: Option[TypeRef], doc: Doc, static: Boolean, const: Boolean)
+  case class Method(ident: Ident, params: Seq[Field], ret: Option[TypeRef], doc: Doc, static: Boolean, const: Boolean, lang: Ext)
 }
 
 case class Field(ident: Ident, ty: TypeRef, doc: Doc)
+
+case class ProtobufMessage(cpp: ProtobufMessage.Cpp, java: ProtobufMessage.Java, objc: Option[ProtobufMessage.Objc], ts: Option[ProtobufMessage.Ts]) extends TypeDef
+object ProtobufMessage {
+  case class Cpp(header: String, ns: String)
+  case class Java(pkg: String, jniClass: Option[String], jniHeader: Option[String])
+  case class Objc(header: String, prefix: String)
+  case class Ts(module: String, ns: String)
+}

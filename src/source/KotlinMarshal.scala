@@ -30,13 +30,14 @@ class KotlinMarshal(spec: Spec) extends Marshal(spec) {
         case MDate => List(ImportRef("java.util.Date"))
         case _ => List()
       }
+    case p: MProtobuf => List(ImportRef(withPackage(Some(p.body.java.pkg), p.name)))
     case e if isEnumFlags(e) => List(ImportRef("java.util.EnumSet"))
     case _ => List()
   }
 
   def isEnumFlags(m: Meta): Boolean = m match {
     case MDef(_, _, _, Enum(_, true)) => true
-    case MExtern(_, _, _, Enum(_, true), _, _, _, _, _) => true
+    case MExtern(_, _, _, Enum(_, true), _, _, _, _, _, _, _) => true
     case _ => false
   }
   def isEnumFlags(tm: MExpr): Boolean = tm.base match {
@@ -61,7 +62,9 @@ class KotlinMarshal(spec: Spec) extends Marshal(spec) {
             case MOptional => throw new AssertionError("nested optional?")
             case m => f(arg, true) + "?"
           }
+        case MArray => "Array<" + toKotlinType(tm.args.head, packageName) + ">"
         case e: MExtern => (if(needRef) e.java.boxed else e.java.typename) + (if(e.java.generic) args(tm) else "")
+        case p: MProtobuf => p.name
         case o =>
           val base = o match {
             case p: MPrimitive => p.kName
@@ -72,9 +75,12 @@ class KotlinMarshal(spec: Spec) extends Marshal(spec) {
             case MList => "ArrayList"
             case MSet => "HashSet"
             case MMap => "HashMap"
+            case MArray => throw new AssertionError("array should have been special cased")
             case d: MDef => withPackage(packageName, idJava.ty(d.name))
             case e: MExtern => throw new AssertionError("unreachable")
+            case e: MProtobuf => throw new AssertionError("unreachable")
             case p: MParam => idJava.typeParam(p.name)
+            case MVoid => "Void"
           }
           base + args(tm)
       }

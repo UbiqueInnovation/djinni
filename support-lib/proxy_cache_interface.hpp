@@ -13,12 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+// This file has been modified by Snap, Inc.
+//
 
 #pragma once
-
+#ifdef __cplusplus
 #include <memory>
 #include <functional>
 #include <typeindex>
+#include <unordered_map>
 
 namespace djinni {
 
@@ -175,6 +178,8 @@ public:
                                   const OwningImplPointer & impl,
                                   AllocatorFunction * alloc);
 
+    static std::unordered_map<const char*, size_t> stats();
+
 private:
     static void cleanup(const std::shared_ptr<Pimpl> &,
                         const std::type_index &,
@@ -183,3 +188,4 @@ private:
 };
 
 } // namespace djinni
+#endif

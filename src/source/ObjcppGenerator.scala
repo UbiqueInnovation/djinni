@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
@@ -53,7 +55,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     imports.add("#import " + q(spec.objcBaseLibIncludePrefix + "DJIMarshal+Private.h"))
     imports.add("!#include " + q(spec.objcppIncludeCppPrefix + spec.cppFileIdentStyle(ident) + "." + spec.cppHeaderExt))
 
-    writeObjcFile(objcppMarshal.privateHeaderName(ident.name), origin, imports, w => {} , true)
+    writeObjcFile(objcppMarshal.privateHeaderName(ident.name), origin, imports, w => {}, true)
   }
 
   def headerName(ident: String): String = idObjc.ty(ident) + "." + spec.objcHeaderExt
@@ -96,7 +98,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     writeObjcFile(objcppMarshal.privateHeaderName(ident.name), origin, refs.privHeader, w => {
       arcAssert(w)
       w.wl
-      w.wl((if(i.ext.objc) "@protocol " else "@class ") + self + ";")
+      w.wl((if(useProtocol(i.ext, spec)) "@protocol " else "@class ") + self + ";")
       w.wl
       wrapNamespace(w, spec.objcppNamespace, w => {
         w.wl(s"class $helperClass").bracedSemi {
@@ -109,7 +111,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
               w.wl(s"using CppType = std::shared_ptr<$cppSelf>;")
               w.wl(s"using CppOptType = std::shared_ptr<$cppSelf>;")
           }
-          w.wl("using ObjcType = " + (if(i.ext.objc) s"id<$self>" else s"$self*") + ";");
+          w.wl("using ObjcType = " + (if(useProtocol(i.ext, spec)) s"id<$self>" else s"$self*") + ";");
           w.wl
           w.wl(s"using Boxed = $helperClass;")
           w.wl
@@ -124,11 +126,18 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       w.wl
     }, true)
 
+    val hasStaticMethod = i.methods.exists(_.static);
+
+    // Add user include file if defined
+    spec.objcppFunctionPrologueFile.foreach(x=>refs.body.add("#include " + q(x)))
     if (i.ext.cpp) {
       refs.body.add("#import " + q(spec.objcBaseLibIncludePrefix + "DJICppWrapperCache+Private.h"))
       refs.body.add("#include <utility>")
       refs.body.add("#import " + q(spec.objcBaseLibIncludePrefix + "DJIError.h"))
       refs.body.add("#include <exception>")
+
+      if (spec.objcGenProtocol && hasStaticMethod)
+        refs.body.add("#import " + q(spec.objcIncludePrefix + marshal.implHeaderName(ident)))
     }
     if (!spec.cppNnType.isEmpty || !spec.cppNnCheckExpression.nonEmpty) {
       refs.body.add("#include <stdexcept>")
@@ -151,6 +160,8 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl
         if (i.ext.objc)
           w.wl(s"@interface $objcSelf : NSObject<$self>")
+        else if (spec.objcGenProtocol && !hasStaticMethod)
+          w.wl(s"@interface $objcSelf : NSObject<$self>")
         else
           w.wl(s"@interface $objcSelf ()")
         w.wl
@@ -169,11 +180,12 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           }
           w.wl("return self;")
         }
-        for (m <- i.methods) {
+        for (m <- i.methods.filter(m => !m.static || m.lang.objc)) {
           w.wl
           writeObjcFuncDecl(m, w)
           w.braced {
-            w.w("try").bracedEnd(" DJINNI_TRANSLATE_EXCEPTIONS()") {
+            val body = () => {
+              spec.objcppFunctionPrologueFile.foreach(x=>w.wl(s"""DJINNI_FUNCTION_PROLOGUE("${ident.name}.${m.ident.name}");"""))
               m.params.foreach(p => {
                 if (isInterface(p.ty.resolved) && spec.cppNnCheckExpression.nonEmpty) {
                   // We have a non-optional interface, assert that we're getting a non-null value
@@ -192,7 +204,16 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
               writeAlignedCall(w, call, m.params, ")", p => objcppMarshal.toCpp(p.ty, idObjc.local(p.ident.name)))
 
               w.wl(";")
-              m.ret.fold()(r => w.wl(s"return ${objcppMarshal.fromCpp(r, "objcpp_result_")};"))
+              m.ret.fold()(r => w.wl(s"return ${objcppMarshal.fromCpp(r, cppMarshal.maybeMove("objcpp_result_", r))};"))
+            }
+            if (spec.objcppDisableExceptionTranslation) {
+              // write body without try/DJINNI_TRANSLATE_EXCEPTIONS
+              // objc code will see C++ exceptions
+              body()
+            } else {
+              w.w("try").bracedEnd(" DJINNI_TRANSLATE_EXCEPTIONS()") {
+                body()
+              }
             }
           }
         }
@@ -217,10 +238,11 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
               val ret = cppMarshal.fqReturnType(m.ret)
               val params = m.params.map(p => cppMarshal.fqParamType(p.ty) + " c_" + idCpp.local(p.ident))
               w.wl(s"$ret ${idCpp.method(m.ident)}${params.mkString("(", ", ", ")")} override").braced {
+                spec.objcppFunctionPrologueFile.foreach(x=>w.wl(s"""DJINNI_FUNCTION_PROLOGUE("${ident.name}.${m.ident.name}");"""))
                 w.w("@autoreleasepool").braced {
                   val ret = m.ret.fold("")(_ => "auto objcpp_result_ = ")
                   val call = s"[djinni_private_get_proxied_objc_object() ${idObjc.method(m.ident)}"
-                  writeAlignedObjcCall(w, ret + call, m.params, "]", p => (idObjc.field(p.ident), s"(${objcppMarshal.fromCpp(p.ty, "c_" + idCpp.local(p.ident))})"))
+                  writeAlignedObjcCall(w, ret + call, m.params, "]", p => (idObjc.field(p.ident), s"(${objcppMarshal.fromCpp(p.ty, cppMarshal.maybeMove("c_" + idCpp.local(p.ident), p.ty))})"))
                   w.wl(";")
                   m.ret.fold()(ty => {
                     if (spec.cppNnCheckExpression.nonEmpty && isInterface(ty.resolved)) {
@@ -256,10 +278,16 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
             }
           }
           if (i.ext.cpp && !i.ext.objc) {
-            // C++ only. In this case we generate a class instead of a protocol, so
-            // we don't have to do any casting at all, just access cppRef directly.
-            w.wl("return " + nnCheck("objc->_cppRefHandle.get()") + ";")
-            //w.wl(s"return ${spec.cppNnCheckExpression.getOrElse("")}(objc->_cppRefHandle.get());")
+            if (!spec.objcGenProtocol) {
+              // C++ only. In this case we generate a class instead of a protocol, so
+              // we don't have to do any casting at all, just access cppRef directly.
+              w.wl("return " + nnCheck("objc->_cppRefHandle.get()") + ";")
+              //w.wl(s"return ${spec.cppNnCheckExpression.getOrElse("")}(objc->_cppRefHandle.get());")
+            } else {
+              // C++ only with protocol interface. Cast to interface type then access cppRef.
+              val getProxyExpr = s"(($objcSelf*)objc)->_cppRefHandle.get()"
+              w.wl(s"return ${nnCheck(getProxyExpr)};")
+            }
           } else if (i.ext.cpp || i.ext.objc) {
             // ObjC only, or ObjC and C++.
             if (i.ext.cpp) {
@@ -370,7 +398,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           if(r.fields.isEmpty) w.wl("(void)cpp; // Suppress warnings in relase builds for empty records")
           val first = if(r.fields.isEmpty) "" else IdentStyle.camelUpper("with_" + r.fields.head.ident.name)
           val call = s"return [[$noBaseSelf alloc] init$first"
-          writeAlignedObjcCall(w, call, r.fields, "]", f => (idObjc.field(f.ident), s"(${objcppMarshal.fromCpp(f.ty, "cpp." + idCpp.field(f.ident))})"))
+          writeAlignedObjcCall(w, call, r.fields, "]", f => (idObjc.field(f.ident), s"(${objcppMarshal.fromCpp(f.ty, cppMarshal.maybeMove("cpp." + idCpp.field(f.ident), f.ty))})"))
           w.wl(";")
         }
       })
@@ -380,12 +408,10 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
   def writeObjcFile(fileName: String, origin: String, refs: Iterable[String], f: IndentWriter => Unit, ifDefCpp: Boolean = false) {
     createFile(spec.objcppOutFolder.get, fileName, (w: IndentWriter) => {
       w.wl("// AUTOGENERATED FILE - DO NOT MODIFY!")
-      w.wl("// This file generated by Djinni from " + origin)
-      
+      w.wl("// This file was generated by Djinni from " + origin)
       if (ifDefCpp) {
         w.wl("#ifdef __cplusplus")
       }
-
       w.wl
       if (refs.nonEmpty) {
         var included = mutable.TreeSet[String]();
@@ -401,7 +427,6 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl
       }
       f(w)
-
       if (ifDefCpp) {
         w.wl("#endif")
       }

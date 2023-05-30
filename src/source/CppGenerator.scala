@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
@@ -63,7 +65,7 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
       refs.hpp.add("#include <functional>") // needed for std::hash
     }
 
-    val flagsType = "unsigned"
+    val flagsType = "int32_t"
     val enumType = "int"
     val underlyingType = if(e.flags) flagsType else enumType
 
@@ -90,6 +92,17 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
 
         w.w(s"constexpr $self operator~($self x) noexcept").braced {
           w.wl(s"return static_cast<$self>(~static_cast<$flagsType>(x));")
+        }
+      } else {
+        w.wl
+        // Define a toString function
+        w.w("constexpr const char* "+ idCpp.method("to_string") + "(" + self + " e) noexcept").braced {
+          w.w("constexpr const char* names[] =").bracedSemi {
+            for(o <- e.options) {
+              w.wl(s""""${o.ident.name}",""")
+            }
+          }
+          w.wl(s"return names[static_cast<$underlyingType>(e)];");
         }
       }
     },
@@ -173,14 +186,12 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
 
     val skipFirst = SkipFirst()
     for (c <- consts) {
-      skipFirst{ w.wl }
-      if (shouldConstexpr(c)){
-        w.w(s"${marshal.fieldType(c.ty)} constexpr $selfName::${idCpp.const(c.ident)}")
-      } else {
+      if (!shouldConstexpr(c)){
+        skipFirst{ w.wl }
         w.w(s"${marshal.fieldType(c.ty)} const $selfName::${idCpp.const(c.ident)} = ")
         writeCppConst(w, c.ty, c.value)
+        w.wl(";")
       }
-      w.wl(";")
     }
   }
 
@@ -235,6 +246,9 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
         // Constructor.
         if(r.fields.nonEmpty) {
           w.wl
+          if (r.fields.size == 1) {
+            w.wl("//NOLINTNEXTLINE(google-explicit-constructor)")
+          }
           writeAlignedCall(w, actualSelf + "(", r.fields, ")", f => marshal.fieldType(f.ty) + " " + idCpp.local(f.ident) + "_")
           w.wl
           val init = (f: Field) => idCpp.field(f.ident) + "(std::move(" + idCpp.local(f.ident) + "_))"
@@ -331,7 +345,7 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
       w.w(s"class $self").bracedSemi {
         w.wlOutdent("public:")
         // Destructor
-        w.wl(s"virtual ~$self() {}")
+        w.wl(s"virtual ~$self() = default;")
         // Constants
         generateHppConstants(w, i.consts)
         // Methods

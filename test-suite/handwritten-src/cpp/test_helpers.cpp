@@ -1,6 +1,7 @@
 #include "test_helpers.hpp"
 #include "client_returned_record.hpp"
 #include "client_interface.hpp"
+#include "async_interface.hpp"
 #include "user_token.hpp"
 #include "assorted_primitives.hpp"
 #include "color.hpp"
@@ -9,6 +10,12 @@
 #include "primitive_list.hpp"
 #include "set_record.hpp"
 #include <exception>
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#else
+#include <thread>
+#endif
 
 namespace testsuite {
 
@@ -21,7 +28,7 @@ SetRecord TestHelpers::get_set_record() {
 }
 
 bool TestHelpers::check_set_record(const SetRecord & rec) {
-    return rec.set == std::unordered_set<std::string>{ "StringA", "StringB", "StringC" };
+    return rec.sset == std::unordered_set<std::string>{ "StringA", "StringB", "StringC" };
 }
 
 static const PrimitiveList cPrimitiveList { { 1, 2, 3 } };
@@ -141,16 +148,11 @@ std::experimental::optional<int32_t> TestHelpers::return_none() {
 }
 
 void TestHelpers::check_enum_map(const std::unordered_map<color, std::string> & m) {
-    std::unordered_map<color, std::string> expected = {
-        { color::RED,    "red"    },
-        { color::ORANGE, "orange" },
-        { color::YELLOW, "yellow" },
-        { color::GREEN,  "green"  },
-        { color::BLUE,   "blue"   },
-        { color::INDIGO, "indigo" },
-        { color::VIOLET, "violet" },
-    };
-
+    std::unordered_map<color, std::string> expected;
+    // test the to_string conversion here
+    for (auto c: {color::RED, color::ORANGE, color::YELLOW, color::GREEN, color::BLUE, color::INDIGO, color::VIOLET}) {
+        expected[c] = to_string(c);
+    }
     if (m != expected) {
         throw std::invalid_argument("map mismatch");
     }
@@ -164,6 +166,146 @@ AssortedPrimitives TestHelpers::assorted_primitives_id(const AssortedPrimitives 
 
 std::vector<uint8_t> TestHelpers::id_binary(const std::vector<uint8_t> & v) {
     return v;
+}
+
+djinni::Future<int32_t> TestHelpers::get_async_result() {
+    auto* p = new djinni::Promise<int32_t>();
+    auto f = p->getFuture();
+
+#if defined(__EMSCRIPTEN__)
+    emscripten_async_call([] (void* context) {
+        auto* p = reinterpret_cast<djinni::Promise<int32_t>*>(context);
+        p->setValue(42);
+        delete p;
+    }, p, 10/*ms*/);
+#else
+    std::thread t([p] () mutable {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        p->setValue(42);
+        delete p;
+    });
+    t.detach();
+#endif
+    return f;
+}
+
+djinni::Future<int32_t> TestHelpers::async_early_throw() {
+    throw std::runtime_error("error");
+}
+
+djinni::Future<std::string> TestHelpers::future_roundtrip(djinni::Future<int32_t> f) {
+#ifdef DJINNI_FUTURE_HAS_COROUTINE_SUPPORT
+    auto i = co_await f;
+    co_return std::to_string(i);
+#else
+    return f.then([] (djinni::Future<int32_t> f) {
+        return std::to_string(f.get());
+    });
+#endif
+}
+
+djinni::Future<std::string> TestHelpers::check_async_interface(const std::shared_ptr<AsyncInterface> & i) {
+#ifdef DJINNI_FUTURE_HAS_COROUTINE_SUPPORT
+    auto f1 = [] () -> djinni::Future<std::string> {
+        co_return "36";
+    };
+    auto f2 = [] (auto f1) -> djinni::Future<int> {
+        co_return std::stoi(co_await f1);
+    };
+    auto f3 = i->future_roundtrip(f2(f1()));
+    return f3;
+#else
+    djinni::Promise<std::string> p;
+    auto f = p.getFuture();
+    auto f2 = f.then([] (djinni::Future<std::string> s) {
+        return std::stoi(s.get());
+    });
+    auto f3 = i->future_roundtrip(std::move(f2));
+    p.setValue("36");
+    return f3;
+#endif
+}
+
+djinni::Future<std::string> TestHelpers::check_async_composition(const std::shared_ptr<AsyncInterface> & i) {
+    djinni::Promise<std::string> p1;
+    djinni::Promise<std::string> p2;
+    auto f1 = p1.getFuture();
+    auto f2 = p2.getFuture();
+
+    auto str2num = [] (djinni::Future<std::string> s) {
+        return std::stoi(s.get());
+    };
+    
+    auto f3 = f1.then(str2num);
+    auto f4 = f2.then(str2num);
+    
+    std::vector<djinni::Future<std::string>> futures;
+    futures.push_back(i->future_roundtrip(std::move(f3)));
+    futures.push_back(i->future_roundtrip(std::move(f4)));
+
+    p1.setValue("36");
+    p2.setValue("36");
+    
+#ifdef DJINNI_FUTURE_HAS_COROUTINE_SUPPORT
+    co_await djinni::whenAll(futures);
+    co_return std::string("42");
+#else
+    return djinni::whenAll(futures).then([] (auto f) {
+        return std::string("42");
+    });
+#endif
+}
+
+::djinni::Future<void> TestHelpers::void_async_method(djinni::Future<void> f) {
+#ifdef DJINNI_FUTURE_HAS_COROUTINE_SUPPORT
+    co_return co_await f;
+#else
+    return f;
+#endif
+}
+
+::djinni::Future<std::experimental::optional<int32_t>> TestHelpers::add_one_if_present(djinni::Future<std::experimental::optional<int32_t>> f) {
+#ifdef DJINNI_FUTURE_HAS_COROUTINE_SUPPORT
+    auto val = co_await f;
+    co_return val ? std::experimental::optional<int32_t>(*val + 1) : std::experimental::nullopt;
+#else
+    return f.then([](auto incoming) {
+        auto val = incoming.get();
+        return val ? std::experimental::optional<int32_t>(*val + 1) : std::experimental::nullopt;
+    });
+#endif
+}
+
+std::vector<std::experimental::optional<std::string>> TestHelpers::get_optional_list() {
+    return {std::experimental::nullopt, std::string("hello")};
+}
+
+bool TestHelpers::check_optional_list(const std::vector<std::experimental::optional<std::string>> & ol) {
+    return ol.size() == 2 &&
+        ol[0] == std::experimental::nullopt &&
+        ol[1] == std::string("hello");
+}
+
+std::unordered_set<std::experimental::optional<std::string>> TestHelpers::get_optional_set() {
+    return {std::experimental::nullopt, std::string("hello")};
+}
+
+bool TestHelpers::check_optional_set(const std::unordered_set<std::experimental::optional<std::string>> & os) {
+    return os.size() == 2 &&
+        os.find(std::experimental::nullopt) != os.end() &&
+        os.find(std::string("hello")) != os.end();
+}
+
+std::unordered_map<std::experimental::optional<std::string>, std::experimental::optional<std::string>> TestHelpers::get_optional_map() {
+    return {{std::experimental::nullopt, std::string("hello")}, {std::string("hello"), std::experimental::nullopt}};
+}
+
+bool TestHelpers::check_optional_map(const std::unordered_map<std::experimental::optional<std::string>, std::experimental::optional<std::string>> & om) {
+    auto i1 = om.find(std::experimental::nullopt);
+    auto i2 = om.find(std::string("hello"));
+    return om.size() == 2 &&
+        i1->second == std::string("hello") &&
+        i2->second == std::experimental::nullopt;
 }
 
 } // namespace testsuite

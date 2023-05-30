@@ -12,11 +12,14 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
 
 import djinni.ast.TypeDef
+import djinni.ast.ProtobufMessage
 import scala.collection.immutable
 
 package object meta {
@@ -30,7 +33,7 @@ abstract sealed class Meta
 
 case class MParam(name: String) extends Meta { val numParams = 0 }
 case class MDef(name: String, override val numParams: Int, defType: DefType, body: TypeDef) extends Meta
-case class MExtern(name: String, override val numParams: Int, defType: DefType, body: TypeDef, cpp: MExtern.Cpp, objc: MExtern.Objc, objcpp: MExtern.Objcpp, java: MExtern.Java, jni: MExtern.Jni) extends Meta
+case class MExtern(name: String, override val numParams: Int, defType: DefType, body: TypeDef, cpp: MExtern.Cpp, objc: MExtern.Objc, objcpp: MExtern.Objcpp, java: MExtern.Java, jni: MExtern.Jni, wasm: MExtern.Wasm, ts: MExtern.Ts) extends Meta
 object MExtern {
   // These hold the information marshals need to interface with existing types correctly
   // All include paths are complete including quotation marks "a/b/c" or angle brackets <a/b/c>.
@@ -39,14 +42,17 @@ object MExtern {
   case class Cpp(
     typename: String,
     header: String,
-    byValue: Boolean // Whether to pass struct by value in C++ (e.g. std::chrono::duration). Only used for "record" types.
+    byValue: Boolean, // Whether to pass struct by value in C++ (e.g. std::chrono::duration). Only used for "record" types.
+    moveOnly: Boolean
   )
   case class Objc(
     typename: String,
     header: String,
     boxed: String, // Fully qualified Objective-C typename, must be an object. Only used for "record" types.
     pointer: Boolean, // True to construct pointer types and make it eligible for "nonnull" qualifier. Only used for "record" types.
-    hash: String // A well-formed expression to get the hash value. Must be a format string with a single "%s" placeholder. Only used for "record" types with "eq" deriving when needed.
+    generic: Boolean, // Set to false to exclude type arguments from the ObjC class. This is should be true by default. Useful if template arguments are only used in C++.
+    hash: String, // A well-formed expression to get the hash value. Must be a format string with a single "%s" placeholder. Only used for "record" types with "eq" deriving when needed.
+    protocol: Boolean
   )
   case class Objcpp(
     translator: String, // C++ typename containing toCpp/fromCpp methods
@@ -67,7 +73,18 @@ object MExtern {
     typename: String, // The JNI type to use (e.g. jobject, jstring)
     typeSignature: String // The mangled Java type signature (e.g. "Ljava/lang/String;")
   )
+  case class Wasm(
+    typename: String, // The Emscripten type to use (e.g. em::val, int32_t)
+    translator: String, // C++ typename containing toCpp/fromCpp methods
+    header: String // Where to find the translator class
+  )
+  case class Ts(
+    typename: String, // The TypeScript type
+    module: String,   // The module to import for the type
+    generic: Boolean
+  )
 }
+case class MProtobuf(name: String, override val numParams: Int, body: ProtobufMessage) extends Meta
 
 abstract sealed class MOpaque extends Meta { val idlName: String }
 
@@ -84,6 +101,8 @@ case object MOptional extends MOpaque { val numParams = 1; val idlName = "option
 case object MList extends MOpaque { val numParams = 1; val idlName = "list" }
 case object MSet extends MOpaque { val numParams = 1; val idlName = "set" }
 case object MMap extends MOpaque { val numParams = 2; val idlName = "map" }
+case object MArray extends MOpaque { val numParams = 1; val idlName = "array"}
+case object MVoid extends MOpaque { val numParams = 0; val idlName = "void"}
 
 val defaults: Map[String,MOpaque] = immutable.HashMap(
   ("i8",   MPrimitive("i8",   "byte",    "Byte",    "jbyte",    "int8_t",  "Byte",    "B", "int8_t",  "NSNumber")),
@@ -99,7 +118,9 @@ val defaults: Map[String,MOpaque] = immutable.HashMap(
   ("date", MDate),
   ("list", MList),
   ("set", MSet),
-  ("map", MMap))
+  ("map", MMap),
+  ("array", MArray),
+  ("void", MVoid))
 
 def isInterface(ty: MExpr): Boolean = {
   ty.base match {
@@ -109,7 +130,11 @@ def isInterface(ty: MExpr): Boolean = {
   }
 }
 
+def isOptional(ty: MExpr): Boolean = {
+  ty.base == MOptional && ty.args.length == 1
+}
+
 def isOptionalInterface(ty: MExpr): Boolean = {
-  ty.base == MOptional && ty.args.length == 1 && isInterface(ty.args.head)
+  isOptional(ty) && isInterface(ty.args.head)
 }
 }

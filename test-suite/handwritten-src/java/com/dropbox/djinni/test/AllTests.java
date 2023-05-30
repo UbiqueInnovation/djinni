@@ -24,11 +24,18 @@ public class AllTests extends TestSuite {
         mySuite.addTestSuite(MockRecordTest.class);
         mySuite.addTestSuite(WcharTest.class);
         mySuite.addTestSuite(AndroidParcelableTest.class);
+        mySuite.addTestSuite(FunctionPrologueTest.class);
+        mySuite.addTestSuite(OutcomeTest.class);
+        mySuite.addTestSuite(ProtoTest.class);
+        mySuite.addTestSuite(ArrayTest.class);
+        mySuite.addTestSuite(DataTest.class);
+        mySuite.addTestSuite(AsyncTest.class);
+        mySuite.addTestSuite(InterfaceAndAbstractClass.class);
         return mySuite;
     }
 
     public static void main(String[] args) throws Exception {
-       NativeLibLoader.loadLibs();
-       JUnitCore.main("com.dropbox.djinni.test.AllTests");
+        NativeLibLoader.loadLibs();
+        JUnitCore.main("com.dropbox.djinni.test.AllTests");
     }
 }

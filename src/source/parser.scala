@@ -12,6 +12,8 @@
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
+  * 
+  * This file has been modified by Snap, Inc.
   */
 
 package djinni
@@ -38,7 +40,9 @@ val fileStack = mutable.Stack[File]()
 private object IdlParser extends RegexParsers {
   override protected val whiteSpace = """[ \t\n\r]+""".r
 
-  def idlFile(origin: String): Parser[IdlFile] = rep(importFileRef) ~ rep(typeDecl(origin)) ^^ { case imp~types => IdlFile(imp, types) }
+  def idlFile(origin: String): Parser[IdlFile] = rep(flag) ~ rep(importFileRef) ~ rep(typeDecl(origin)) ^^ { case f~imp~types => IdlFile(imp, types, f) }
+
+  def flag(): Parser[String] = "@flag" ~> ("\"" ~> """([^"\\]|\\[\\"])*""".r <~ "\"") ^^ { _.replaceAll("""\\(.)""", "$1") }
 
   def importFileRef(): Parser[FileRef] = {
     ("@" ~> directive) ~ ("\"" ~> filePath <~ "\"") ^^ {
@@ -47,6 +51,9 @@ private object IdlParser extends RegexParsers {
       }
       case "extern" ~ x => {
         new ExternFileRef(importFile(x))
+      }
+      case "protobuf" ~ x => {
+        new ProtobufFileRef(importFile(x))
       }
     }
   }
@@ -69,22 +76,25 @@ private object IdlParser extends RegexParsers {
 
   def filePath = "[^\"]*".r
 
-  def directive = importDirective | externDirective
+  def directive = importDirective | externDirective | protobufDirective
   def importDirective = "import".r
   def externDirective = "extern".r
+  def protobufDirective = "protobuf".r
 
   def typeDecl(origin: String): Parser[TypeDecl] = doc ~ ident ~ typeList(ident ^^ TypeParam) ~ "=" ~ typeDef ^^ {
     case doc~ident~typeParams~_~body => InternTypeDecl(ident, typeParams, body, doc, origin)
   }
 
   def ext(default: Ext) = (rep1("+" ~> ident) >> checkExts) | success(default)
-  def extRecord = ext(Ext(false, false, false))
-  def extInterface = ext(Ext(true, true, true))
+  def extRecord = ext(Ext(false, false, false, false))
+  def extInterface = ext(Ext(true, true, true, true))
+  def supportLang = ext(Ext(true, true, true, true))
 
   def checkExts(parts: List[Ident]): Parser[Ext] = {
     var foundCpp = false
     var foundJava = false
     var foundObjc = false
+    var foundJavascript = false
 
     for (part <- parts)
       part.name match {
@@ -100,9 +110,13 @@ private object IdlParser extends RegexParsers {
           if (foundObjc) return err("Found multiple \"o\" modifiers.")
           foundObjc = true
         }
+        case "w" => {
+          if (foundJavascript) return err("Found multiple \"w\" modifiers.")
+          foundJavascript = true
+        }
         case _ => return err("Invalid modifier \"" + part.name + "\"")
       }
-    success(Ext(foundJava, foundCpp, foundObjc))
+    success(Ext(foundJava, foundCpp, foundObjc, foundJavascript))
   }
 
   def typeDef: Parser[TypeDef] = record | enum | flags | interface
@@ -124,6 +138,7 @@ private object IdlParser extends RegexParsers {
       case "eq" => Record.DerivingType.Eq
       case "ord" => Record.DerivingType.Ord
       case "parcelable" => Record.DerivingType.AndroidParcelable
+      case "nscopying" => Record.DerivingType.NSCopying
       case _ => return err( s"""Unrecognized deriving type "${ident.name}"""")
     }).toSet
   }
@@ -172,8 +187,13 @@ private object IdlParser extends RegexParsers {
     case "const " => true
     case "" => false
   }
-  def method: Parser[Interface.Method] = doc ~ staticLabel ~ constLabel ~ ident ~ parens(repsepend(field, ",")) ~ opt(ret) ^^ {
-    case doc~staticLabel~constLabel~ ident~params~ret => Interface.Method(ident, params, ret, doc, staticLabel, constLabel)
+  def method: Parser[Interface.Method] = doc ~ staticLabel ~ constLabel ~ ident ~ parens(repsepend(field, ",")) ~ opt(ret) ~ supportLang ^^ {
+    case doc~staticLabel~constLabel~ ident~params~ret~ext => {
+      ret match {
+        case Some(r) if (r.expr.ident.name == "void") => Interface.Method(ident, params, None, doc, staticLabel, constLabel, ext)
+        case _ => Interface.Method(ident, params, ret, doc, staticLabel, constLabel, ext)
+      }
+    }
   }
   def ret: Parser[TypeRef] = ":" ~> typeRef
 
@@ -298,11 +318,87 @@ def parseExternFile(externFile: File, inFileListWriter: Option[Writer]) : Seq[Ty
   }
 }
 
+def parseProtobufManifest(origin: String, in: java.io.Reader): Either[Error, Seq[TypeDecl]] = {
+  val yaml = new Yaml()
+  val tds = mutable.MutableList[TypeDecl]()
+  val doc = yaml.load(in).asInstanceOf[JMap[String, Any]]
+
+  // - `cpp` key must be present
+  //   - `cpp.header` key must be present
+  //   - `cpp.namespace` key must be present
+  // - `java` key must be present
+  //   - `java.class` key must be present
+  //   - `jni_class` is optional
+  //   - `jni_header` is optional
+  // - `ts` key must be present
+  //   - `ts.module` key must be present
+  // - `objc` key is optional
+  //   - if `objc` is present then `objc.header` must be present
+  //   - if `objc` is present then `objc.prefix` must be present
+  // - `ts` key is optional
+  //   - if `ts` is present then `ts.module` must be present
+  // - `messages` key must be present
+  //   - `messages` must be a string list
+  val c = Option(doc.get("cpp")) match {
+    case Some(properties) => properties.asInstanceOf[JMap[String, String]].toMap
+    case None => return Left(Error(Loc(fileStack.top, 1, 1), "'cpp' properties not found"))
+  }
+  val j = Option(doc.get("java")) match {
+    case Some(properties) => properties.asInstanceOf[JMap[String, String]].toMap
+    case None => return Left(Error(Loc(fileStack.top, 1, 1), "'java' properties not found"))
+  }
+  val proto = ProtobufMessage(
+    ProtobufMessage.Cpp(c("header"), c("namespace")),
+    ProtobufMessage.Java(j("class"), j.get("jni_class"), j.get("jni_header")),
+    // ObjC is optional, if it's not present, then ObjC will use C++ protos
+    Option(doc.get("objc")) match {
+      case Some(properties) => {
+        val p = properties.asInstanceOf[JMap[String, String]].toMap
+        Some(ProtobufMessage.Objc(p("header"), p("prefix")))
+      }
+      case None => None
+    },
+    // TS is optional
+    Option(doc.get("ts")) match {
+      case Some(properties) => {
+        val p = properties.asInstanceOf[JMap[String, String]].toMap
+        Some(ProtobufMessage.Ts(p("module"), p("namespace")))
+      }
+      case None => None
+    }
+  )
+  for(message <- doc.get("messages").asInstanceOf[java.util.List[String]]) {
+    val ident = Ident(message, fileStack.top, Loc(fileStack.top, 1, 1))
+    tds += ProtobufTypeDecl(ident, Seq.empty[TypeParam], proto, origin);
+  }
+  Right(tds)
+}
+
+def parseProtobufFile(protobufFile: File, inFileListWriter: Option[Writer]) : Seq[TypeDecl] = {
+  if (inFileListWriter.isDefined) {
+    inFileListWriter.get.write(protobufFile + "\n")
+  }
+
+  visitedFiles.add(protobufFile)
+  fileStack.push(protobufFile)
+  val fin = new FileInputStream(protobufFile)
+  try {
+    parseProtobufManifest(protobufFile.getName, new InputStreamReader(fin, "UTF-8")) match {
+      case Right(x) => x
+      case Left(err) => throw err.toException
+    }
+  }
+  finally {
+    fin.close()
+    fileStack.pop()
+  }
+}
+
 def normalizePath(path: File) : File = {
   return new File(java.nio.file.Paths.get(path.toString()).normalize().toString())
 }
 
-def parseFile(idlFile: File, inFileListWriter: Option[Writer]): Seq[TypeDecl] = {
+def parseFile(idlFile: File, inFileListWriter: Option[Writer]): (Seq[TypeDecl], Seq[String]) = {
   val normalizedIdlFile = normalizePath(idlFile)
   if (inFileListWriter.isDefined) {
     inFileListWriter.get.write(normalizedIdlFile + "\n")
@@ -318,6 +414,7 @@ def parseFile(idlFile: File, inFileListWriter: Option[Writer]): Seq[TypeDecl] = 
         System.exit(1); return null;
       case Right(idl) => {
         var types = idl.typeDecls
+        var flags = idl.flags
         idl.imports.foreach(x => {
           val normalized = normalizePath(x.file)
           if (fileStack.contains(normalized)) {
@@ -325,14 +422,19 @@ def parseFile(idlFile: File, inFileListWriter: Option[Writer]): Seq[TypeDecl] = 
           }
           if (!visitedFiles.contains(normalized)) {
             x match {
-              case IdlFileRef(file) =>
-                types = parseFile(normalized, inFileListWriter) ++ types
+              case IdlFileRef(file) => {
+                val (t, f) = parseFile(normalized, inFileListWriter)
+                types = t ++ types
+                flags = f ++ flags
+              }
               case ExternFileRef(file) =>
                 types = parseExternFile(normalized, inFileListWriter) ++ types
+              case ProtobufFileRef(file) =>
+                types = parseProtobufFile(normalized, inFileListWriter) ++ types
             }
           }
         })
-        types
+        (types, flags)
       }
     }
   }
