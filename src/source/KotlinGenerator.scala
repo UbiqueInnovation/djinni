@@ -213,8 +213,10 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
               w.wl("NativeObjectManager.register(this, nativeRef)")
             }
             w.wl
-            w.wl("external fun nativeDestroy(nativeRef: Long)")
-
+            w.w(s"companion object").braced {
+              w.wl("@JvmStatic")
+              w.wl("external fun nativeDestroy(nativeRef: Long)")
+            }
             // Implement the interface's non-static methods.
             for (m <- i.methods if !m.static) {
               w.wl

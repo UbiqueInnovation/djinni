@@ -16,6 +16,7 @@
 
 package com.snapchat.djinni;
 
+import android.util.Log;
 import androidx.annotation.Keep;
 
 import java.lang.ref.PhantomReference;
@@ -91,7 +92,8 @@ public class NativeObjectManager {
                                     wrapper.cleanup();
                                 } catch (Exception e) {
                                     // Nothing we can do, just keep going
-                                    System.out.println("Exception in native cleanup: " + e.getCause());
+                                    Log.e("Djinni", "Exception in native cleanup of " +
+                                            wrapper.mDestroyMethod.getDeclaringClass().getCanonicalName(), e);
                                 }
                             }
                         }
