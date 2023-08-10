@@ -9,7 +9,7 @@ let package = Package(
         .library(
             name: "DjinniSupport",
             targets: ["DjinniSupport"]
-        )
+        ),
     ],
     targets: [
         .target(

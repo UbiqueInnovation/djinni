@@ -104,6 +104,11 @@ object Main {
     var inFileListPath: Option[File] = None
     var outFileListPath: Option[File] = None
     var skipGeneration: Boolean = false
+    var ubFoundationHeader: Option[String] = None
+    var ubGenerateSetters: Boolean = false
+    var ubMethodPrefix: String = "ub"
+    var ubObjcRecordBaseClass: Option[String] = None
+    var ubReadonlyProperties: Boolean = true
     var yamlOutFolder: Option[File] = None
     var yamlOutFile: Option[String] = None
     var yamlPrefix: String = ""
@@ -276,6 +281,16 @@ object Main {
         .text("Optional file in which to write the list of output files produced.")
       opt[Boolean]("skip-generation").valueName("<true/false>").foreach(x => skipGeneration = x)
         .text("Way of specifying if file generation should be skipped (default: false)")
+      opt[String]("ub-foundation-header").valueName("<name>").foreach(x => ubFoundationHeader = Some(x))
+        .text("Foundation import added to each C++ header file. Format: \"<Foundation/Foundation.h>\" (default: None)")
+      opt[Boolean]("ub-generate-setters").valueName("<true/false>").foreach(x => ubGenerateSetters = x)
+        .text("Generate custom setters for non-primitive fields in records (default: false).")
+      opt[String]("ub-method-prefix").valueName("<name>").foreach(x => ubMethodPrefix = x)
+        .text("Prefix added to custom methods when generating setters (default: \"ub\").")
+      opt[String]("ub-objc-record-base-class").valueName("<name>").foreach(x => ubObjcRecordBaseClass = Some(x))
+        .text("Base class of the generated Objective-C classes")
+      opt[Boolean]("ub-readonly-properties").valueName("<true/false>").foreach(x => ubReadonlyProperties = x)
+        .text("Use readonly properties on records (default: true)")
 
       note("\nIdentifier styles (ex: \"FooBar\", \"fooBar\", \"foo_bar\", \"FOO_BAR\", \"m_fooBar\")\nUse an exclamation mark to apply stricty, even on ALL_CAPS identifiers (ex: \"FooBar!\")\n")
       identStyle("ident-java-enum",      c => { javaIdentStyle = javaIdentStyle.copy(enum = c) })
@@ -451,6 +466,11 @@ object Main {
       tsModule,
       outFileListWriter,
       skipGeneration,
+      ubFoundationHeader,
+      ubGenerateSetters,
+      ubMethodPrefix,
+      ubObjcRecordBaseClass,
+      ubReadonlyProperties,
       yamlOutFolder,
       yamlOutFile,
       yamlPrefix,
