@@ -237,7 +237,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         }
       }
 
-      if (r.fields.nonEmpty) {
+      if (r.fields.nonEmpty && spec.ubInitializerUnavailable) {
           // NSObject init / new are marked unavailable. Only allow designated initializer
           // as records may have non-optional / nonnull fields.
           w.wl("- (nonnull instancetype)init NS_UNAVAILABLE;")

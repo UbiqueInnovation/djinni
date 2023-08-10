@@ -109,6 +109,7 @@ object Main {
     var ubMethodPrefix: String = "ub"
     var ubObjcRecordBaseClass: Option[String] = None
     var ubReadonlyProperties: Boolean = true
+    var ubInitializerUnavailable: Boolean = true
     var yamlOutFolder: Option[File] = None
     var yamlOutFile: Option[String] = None
     var yamlPrefix: String = ""
@@ -291,6 +292,8 @@ object Main {
         .text("Base class of the generated Objective-C classes")
       opt[Boolean]("ub-readonly-properties").valueName("<true/false>").foreach(x => ubReadonlyProperties = x)
         .text("Use readonly properties on records (default: true)")
+      opt[Boolean]("ub-initializer-unavailable").valueName("<true/false>").foreach(x => ubInitializerUnavailable = x)
+        .text("Set Objc initializer as unavailable (default: true)")
 
       note("\nIdentifier styles (ex: \"FooBar\", \"fooBar\", \"foo_bar\", \"FOO_BAR\", \"m_fooBar\")\nUse an exclamation mark to apply stricty, even on ALL_CAPS identifiers (ex: \"FooBar!\")\n")
       identStyle("ident-java-enum",      c => { javaIdentStyle = javaIdentStyle.copy(enum = c) })
@@ -471,6 +474,7 @@ object Main {
       ubMethodPrefix,
       ubObjcRecordBaseClass,
       ubReadonlyProperties,
+      ubInitializerUnavailable,
       yamlOutFolder,
       yamlOutFile,
       yamlPrefix,

@@ -110,6 +110,7 @@ package object generatorTools {
                    ubMethodPrefix: String,
                    ubObjcRecordBaseClass: Option[String],
                    ubReadonlyProperties: Boolean,
+                   ubInitializerUnavailable: Boolean,
                    yamlOutFolder: Option[File],
                    yamlOutFile: Option[String],
                    yamlPrefix: String,
