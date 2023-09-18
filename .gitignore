@@ -28,3 +28,4 @@ test-suite/djinni/vendor/third-party/proto/ts/*.js
 *.cache
 src/project
 src/target
+.build
