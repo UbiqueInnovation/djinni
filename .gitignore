@@ -29,3 +29,7 @@ test-suite/djinni/vendor/third-party/proto/ts/*.js
 src/project
 src/target
 .build
+
+#Xcode
+*.xcuserstate
+xcuserdata/
