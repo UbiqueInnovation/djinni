@@ -43,6 +43,7 @@ package object generatorTools {
                    javaImplementAndroidOsParcelable: Boolean,
                    javaUseFinalForRecord: Boolean,
                    kotlinRecordsSerializable: Boolean,
+                   kotlinRecordsMoshiJsonClass: Boolean,
                    kotlinOutFolder: Option[File],
                    javaGenInterface: Boolean,
                    cppOutFolder: Option[File],
