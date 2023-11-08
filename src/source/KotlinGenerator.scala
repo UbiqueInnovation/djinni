@@ -108,11 +108,22 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
   }
 
   override def generateEnum(origin: String, ident: Ident, doc: Doc, e: Enum) {
+    // Imports
     val refs = new JavaRefs()
+    if (spec.kotlinRecordsMoshiJsonClass)
+      refs.java.add(s"com.squareup.moshi.JsonClass")
 
     writeKotlinFile(ident, origin, refs.java, w => {
       writeDoc(w, doc)
       javaAnnotationHeader.foreach(w.wl)
+
+      // Annotations
+      val annotations = scala.collection.mutable.ArrayBuffer[String]()
+      if (spec.kotlinRecordsMoshiJsonClass)
+        annotations += s"@JsonClass(generateAdapter = false)"
+      annotations.foreach(annotation => w.wl(annotation))
+
+      // Class definition
       w.w(s"enum class ${marshal.typename(ident, e)}").braced {
         for (o <- normalEnumOptions(e)) {
           writeDoc(w, o.doc)
@@ -251,6 +262,9 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
     if (spec.kotlinRecordsSerializable)
       refs.java.add(s"java.io.Serializable")
 
+    if (spec.kotlinRecordsMoshiJsonClass)
+      refs.java.add(s"com.squareup.moshi.JsonClass")
+
     val javaName = if (r.ext.java) (ident.name + "_base") else ident.name
 
     writeKotlinFile(javaName, origin, refs.java, w => {
@@ -262,6 +276,9 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       val annotations = scala.collection.mutable.ArrayBuffer[String]()
       if (r.derivingTypes.contains(DerivingType.AndroidParcelable))
         annotations += s"@Parcelize"
+
+      if (spec.kotlinRecordsMoshiJsonClass)
+        annotations += s"@JsonClass(generateAdapter = true)"
 
       annotations.foreach(annotation => w.wl(annotation))
 
