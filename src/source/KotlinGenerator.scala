@@ -305,6 +305,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
               case "Long" => w.w(s" = 0L")
               case "Float" => w.w(s" = 0.0f")
               case "Double" => w.w(s" = 0.0")
+              case default => {} // nothing
             }
           }
           w.wl(",")
