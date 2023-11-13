@@ -296,7 +296,18 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       w.wl(s"data class ${self + javaTypeParams(params)}(")
       w.nested {
         for (f <- r.fields) {
-          w.wl(s"var ${idJava.field(f.ident)}: ${marshal.fieldType(f.ty)},")
+          val fieldType = marshal.fieldType(f.ty)
+          w.w(s"var ${idJava.field(f.ident)}: $fieldType")
+          if (spec.kotlinRecordsPrimitiveDefaults) {
+            fieldType match {
+              case "Boolean" => w.w(s" = false")
+              case "Int" => w.w(s" = 0")
+              case "Long" => w.w(s" = 0L")
+              case "Float" => w.w(s" = 0.0f")
+              case "Double" => w.w(s" = 0.0")
+            }
+          }
+          w.wl(",")
         }
       }
       w.w(s")$implementsSection")
