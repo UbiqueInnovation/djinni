@@ -297,7 +297,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       w.nested {
         for (f <- r.fields) {
           val fieldType = marshal.fieldType(f.ty)
-          w.w(s"var ${idJava.field(f.ident)}: $fieldType")
+          w.w(s"val ${idJava.field(f.ident)}: $fieldType")
           if (spec.kotlinRecordsPrimitiveDefaults) {
             fieldType match {
               case "Boolean" => w.w(s" = false")
