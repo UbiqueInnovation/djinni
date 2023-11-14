@@ -44,6 +44,7 @@ package object generatorTools {
                    javaUseFinalForRecord: Boolean,
                    kotlinRecordsSerializable: Boolean,
                    kotlinRecordsMoshiJsonClass: Boolean,
+				   kotlinRecordsPrimitiveDefaults: Boolean,
                    kotlinOutFolder: Option[File],
                    javaGenInterface: Boolean,
                    cppOutFolder: Option[File],

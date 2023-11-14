@@ -52,6 +52,7 @@ object Main {
     var javaUseFinalForRecord: Boolean = true
     var kotlinRecordsSerializable: Boolean = false
     var kotlinRecordsMoshiJsonClass: Boolean = false
+    var kotlinRecordsPrimitiveDefaults: Boolean = false
     var kotlinOutFolder: Option[File] = None
     var javaGenInterface: Boolean = false
     var jniOutFolder: Option[File] = None
@@ -157,6 +158,8 @@ object Main {
         .text("Whether generated Kotlin classes for records should implement 'java.io.Serializable' (default: false). ")
       opt[Boolean]("kotlin-records-moshi-json-class").valueName("<moshi-json-class>").foreach(x => kotlinRecordsMoshiJsonClass = x)
         .text("Whether generated Kotlin classes for records should be annotated with 'com.squareup.moshi.JsonClass' (default: false). ")
+      opt[Boolean]("kotlin-records-primitive-defaults").valueName("<primitive-defaults>").foreach(x => kotlinRecordsPrimitiveDefaults = x)
+        .text("Whether parameters in generated Kotlin classes for records should have default values (default: false). ")
       note("")
       opt[File]("kotlin-out").valueName("<out-folder>").foreach(x => kotlinOutFolder = Some(x))
         .text("The output for the Kotlin files (Generator disabled if unspecified).")
@@ -411,6 +414,7 @@ object Main {
       javaUseFinalForRecord,
       kotlinRecordsSerializable,
       kotlinRecordsMoshiJsonClass,
+	  kotlinRecordsPrimitiveDefaults,
       kotlinOutFolder,
       javaGenInterface,
       cppOutFolder,
