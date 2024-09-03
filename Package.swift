@@ -10,6 +10,7 @@ let package = Package(
             name: "DjinniSupport",
             targets: ["DjinniSupport"]
         ),
+        .plugin(name: "DjinniBuildPlugin", targets: ["DjinniBuildPlugin"])
     ],
     targets: [
         .target(
@@ -17,6 +18,12 @@ let package = Package(
             path: "support-lib/objc",
             publicHeadersPath: ""
         ),
+        .plugin(
+            name: "DjinniBuildPlugin",
+            capability: .buildTool(),
+            dependencies: [/*.target(name: "DjinniBinary")*/]
+            ),
+//        .executableTarget(name: "DjinniBinary", resources: [.copy("djinni-binary/djinni")])
     ],
     cxxLanguageStandard: .cxx17
 )

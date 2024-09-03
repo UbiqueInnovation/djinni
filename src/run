@@ -1,6 +1,8 @@
 #! /usr/bin/env bash
 set -eu
 
+cd "/Users/maerki/Ubique/repos/projekte/post/post-app/maps-core/external/djinni/src"
+
 # Locate the script file.  Cross symlinks if necessary.
 loc="$0"
 while [ -h "$loc" ]; do
