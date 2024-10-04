@@ -20,6 +20,7 @@
 
 @class DJFuture;
 
+NS_SWIFT_SENDABLE
 @interface DJFuture<__covariant DJValue> : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 // If the future is ready, then calling its `get` method will not block.
@@ -34,6 +35,7 @@
 
 // ------------------------------------------
 
+NS_SWIFT_SENDABLE
 @interface DJPromise<DJValue> : NSObject
 - (nonnull instancetype)init;
 // Get a future object associated with this promise

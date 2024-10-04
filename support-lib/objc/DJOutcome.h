@@ -18,6 +18,7 @@
 
 #import <Foundation/Foundation.h>
 
+NS_SWIFT_SENDABLE
 @interface DJOutcome<Result, Error> : NSObject
 -(instancetype _Nonnull)init NS_UNAVAILABLE;
 -(id _Nullable)matchResult:(id _Nullable (^ _Nonnull)(Result _Nonnull)) resultHandler

@@ -219,6 +219,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     writeObjcFile(marshal.headerName(objcName), origin, refs.header, w => {
       writeDoc(w, doc)
 
+      w.wl(s"NS_SWIFT_SENDABLE")
       if (r.derivingTypes.contains(DerivingType.NSCopying)) {
         w.wl(s"@interface $self : NSObject<NSCopying>")
       } else {
