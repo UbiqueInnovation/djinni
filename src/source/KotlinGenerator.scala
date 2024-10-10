@@ -174,7 +174,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       val genJavaInterface = spec.javaGenInterface && !statics.nonEmpty && !i.ext.cpp
       val classPrefix = if (genJavaInterface) "interface" else "abstract class"
       val methodPrefix = if (genJavaInterface) "" else "abstract "
-      val innerClassAccessibility = if (genJavaInterface) "" else "private "
+      val innerClassAccessibility = if (genJavaInterface) "" else "public "
 
       w.w(s"$classPrefix $javaClass$typeParamList").braced {
         // Implement the interface's static methods as direct calls to the exported cpp functions.
