@@ -107,6 +107,7 @@ public class NativeObjectManager {
         // NORM_PRIORITY - 1 maps to ANDROID_PRIORITY_BACKGROUND (nice value 10)
         // https://android.googlesource.com/platform/dalvik/+/eclair-release/vm/Thread.c#3057
         mThread.setPriority(Thread.NORM_PRIORITY - 1);
+        mThread.setDaemon(true);
         mThread.start();
     }
 
