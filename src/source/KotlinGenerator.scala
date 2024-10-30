@@ -339,7 +339,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
 
             w.wl
             w.w(s"override fun compareTo(other: $self): Int").braced {
-              w.wl("var tempResult = 0")
+              w.wl("var tempResult : Int")
               for (f <- r.fields) {
                 f.ty.resolved.base match {
                   case MString | MDate => w.wl(s"tempResult = this.${idJava.field(f.ident)}.compareTo(other.${idJava.field(f.ident)})")
