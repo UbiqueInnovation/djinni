@@ -601,18 +601,17 @@ struct DataObject {
 template<typename T>
 class GenericBuffer: public DataObject {
 public:
-    GenericBuffer(size_t size) : _buffer(size, {}) {}
+    GenericBuffer(size_t size) : buffer(size, {}) {}
     GenericBuffer(const typename T::value_type* data, typename T::size_type size) :
-        _buffer(data, data + size) {}
-    GenericBuffer(T&& toTakeOver) : _buffer(std::move(toTakeOver)) {}
+        buffer(data, data + size) {}
+    GenericBuffer(T&& toTakeOver) : buffer(std::move(toTakeOver)) {}
     unsigned addr() override {
-        return reinterpret_cast<unsigned>(_buffer.data());
+        return reinterpret_cast<unsigned>(buffer.data());
     }
     unsigned size() override {
-        return static_cast<unsigned>(_buffer.size());
+        return static_cast<unsigned>(buffer.size());
     }
-private:
-    T _buffer;
+    T buffer;
 };
 
 extern "C" void djinni_register_name_in_ns(const char* prefixedName, const char* namespacedName);
