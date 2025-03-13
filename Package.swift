@@ -9,14 +9,14 @@ let package = Package(
         .library(
             name: "DjinniSupport",
             targets: ["DjinniSupport"]
-        ),
+        )
     ],
     targets: [
         .target(
             name: "DjinniSupport",
             path: "support-lib/objc",
             publicHeadersPath: ""
-        ),
+        )
     ],
     cxxLanguageStandard: .cxx17
 )
