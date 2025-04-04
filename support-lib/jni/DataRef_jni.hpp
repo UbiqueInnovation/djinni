@@ -17,19 +17,20 @@
 #pragma once
 
 #include "djinni_support.hpp"
-#include "../cpp/DataRef.hpp"
+#include "DataRefJNI.hpp"
 
 namespace djinni {
+
 struct NativeDataRef {
     using CppType = DataRef;
     using JniType = jobject;
 
     static CppType toCpp(JNIEnv* jniEnv, JniType data) {
-        return DataRef(data);
+        return DataRef(std::make_unique<DataRefJNI>(data));
     }
 
     static ::djinni::LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const CppType& c) {
-        auto obj = reinterpret_cast<jobject>(c.platformObj());
+        auto obj = reinterpret_cast<jobject>(c.getOrBindPlatform<DataRefJNI>()->platformObj());
         return ::djinni::LocalRef<JniType>(jniEnv->NewLocalRef(obj));
     }
 
