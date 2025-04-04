@@ -15,7 +15,8 @@ let package = Package(
         .target(
             name: "DjinniSupport",
             path: "support-lib/objc",
-            publicHeadersPath: ""
+            publicHeadersPath: "",
+            cxxSettings: [.define("DATAREF_OBJC")]
         )
     ],
     cxxLanguageStandard: .cxx17

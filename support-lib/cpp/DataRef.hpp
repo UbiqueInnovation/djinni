@@ -16,21 +16,14 @@
 
 #pragma once
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
-#include <cstring>
 
-#if !defined(DATAREF_JNI) && !defined(DATAREF_OBJC) && !defined(DATAREF_WASM)
-  #if defined(__ANDROID__)
-    #define DATAREF_JNI 1
-  #elif defined(__APPLE__)
-    #define DATAREF_OBJC 1
-  #elif defined(__EMSCRIPTEN__)
-    #define DATAREF_WASM 1
-  #endif
+#if !defined(DATAREF_JNI) && !defined(DATAREF_OBJC) && !defined(DATAREF_WASM) && !defined(DATAREF_CPP)
+    #error "No DataRef target defined. Please define one of DATAREF_JNI, DATAREF_OBJC, DATAREF_WASM or DATAREF_CPP."
 #endif
+
 
 #if DATAREF_JNI
   using PlatformObject = void*;
