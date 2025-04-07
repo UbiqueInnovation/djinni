@@ -15,97 +15,120 @@
   */
 
 #pragma once
+#ifdef __cplusplus
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
 #include <cstring>
-
-#if !defined(DATAREF_JNI) && !defined(DATAREF_OBJC) && !defined(DATAREF_WASM)
-  #if defined(__ANDROID__)
-    #define DATAREF_JNI 1
-  #elif defined(__APPLE__)
-    #define DATAREF_OBJC 1
-  #elif defined(__EMSCRIPTEN__)
-    #define DATAREF_WASM 1
-  #endif
-#endif
-
-#if DATAREF_JNI
-  using PlatformObject = void*;
-#elif DATAREF_OBJC
-  #include <CoreFoundation/CFData.h>
-  using PlatformObject = const void*;
-#elif DATAREF_WASM
-  #include <emscripten/val.h>
-  using PlatformObject = emscripten::val;
-#else
-  using PlatformObject = const void*;
-#endif
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <vector>
 
 namespace djinni {
 
 class DataRef {
 public:
-    class Impl {
+    // PlatformRef is a platform-specific data reference.
+    // For DataRefs created from C++, this is lazily initialized when the
+    // object is translated to the platform.
+    class PlatformRef {
     public:
-        virtual ~Impl() = default;
-        virtual PlatformObject platformObj() const = 0;
+        virtual ~PlatformRef() = default;
         
         virtual const uint8_t* buf() const = 0;
         virtual size_t len() const = 0;
         virtual uint8_t* mutableBuf() = 0;
     };
 
-    DataRef() = default;
     DataRef(const DataRef&) = default;
     DataRef(DataRef&&) = default;
-    
-    // initialize with empty buffer
-    explicit DataRef(size_t len);
-    // initialize with data
-    DataRef(const void* data, size_t len);
-    // initialize with copying vector
-    explicit DataRef(const std::vector<uint8_t>& vec) : DataRef(vec.data(), vec.size()) {}
-    // initialize with vector and try not to copy it
-    explicit DataRef(std::vector<uint8_t>&& vec);
-    // initialize with copying string
-    explicit DataRef(const std::string& str) : DataRef(str.data(), str.size()) {}
-    // initialize with string and try not to copy it
-    explicit DataRef(std::string&& str);
 
-#if DATAREF_JNI
-    explicit DataRef(void* platformObj);
-#elif DATAREF_OBJC
-    explicit DataRef(CFDataRef platformObj);
-    explicit DataRef(CFMutableDataRef platformObj);
-#elif DATAREF_WASM
-    explicit DataRef(PlatformObject platformObj);
-#endif
+    explicit DataRef(size_t len) : _ref(std::make_shared<RefState>(len)) {}
+    explicit DataRef(const std::vector<uint8_t> &vec) : _ref(std::make_shared<RefState>(vec.data(), vec.size())) {}
+    explicit DataRef(std::vector<uint8_t> &&vec) : _ref(std::make_shared<RefState>(std::move(vec))) {}
+    explicit DataRef(const void *data, size_t len) : _ref(std::make_shared<RefState>(data, len)) {}
+    explicit DataRef(const std::string &str) : _ref(std::make_shared<RefState>(str.data(), str.size())) {}
+    explicit DataRef(std::string &&str) : _ref(std::make_shared<RefState>(std::move(str))) {}
+    explicit DataRef(std::unique_ptr<PlatformRef> platform) : _ref(std::make_shared<RefState>(std::move(platform))) {}
 
     DataRef& operator=(const DataRef&) = default;
     DataRef& operator=(DataRef&&) = default;
     
     const uint8_t* buf() const {
-        return _impl ? _impl->buf() : nullptr;
+        return _ref ? _ref->buf() : nullptr;
     }
     size_t len() const {
-        return _impl ? _impl->len() : 0;
+        return _ref ? _ref->len() : 0;
     }
-    uint8_t* mutableBuf() const {
-        return _impl ? _impl->mutableBuf() : nullptr;
+    uint8_t* mutableBuf() {
+        return _ref ? _ref->mutableBuf() : nullptr;
     }
-    PlatformObject platformObj() const {
-#if DATAREF_WASM
-        return _impl ? _impl->platformObj() : emscripten::val::undefined();
-#else
-        return _impl ? _impl->platformObj() : nullptr;
-#endif
+
+    template<typename PlatformRefT>
+    const PlatformRefT* getOrBindPlatform() const {
+        // Internal mutate
+        return _ref ? _ref->getOrBindPlatform<PlatformRefT>() : nullptr;
     }
 
 private:
-    std::shared_ptr<Impl> _impl;
+    // RefState contains either the native C++ data, or the platform specific reference object.
+    // If the DataRef was created from C++, this will be bound to the platform only when explicitly accessed from there.
+    class RefState {
+    private:
+        mutable std::mutex _mutex;
+        std::optional<std::vector<uint8_t>> _cpp;
+        std::unique_ptr<PlatformRef> _platform;
+    public:
+        explicit RefState(size_t len)
+            : _cpp(len) {}
+        explicit RefState(std::vector<uint8_t> &&vec)
+            : _cpp(std::move(vec)) {}
+        explicit RefState(const void *data, size_t len)
+            : _cpp(len) {
+            memcpy(_cpp->data(), data, len);
+        }
+        explicit RefState(std::string &&str) : RefState(str.data(), str.size()) {}
+        explicit RefState(std::unique_ptr<PlatformRef> platform) : _platform(std::move(platform)) {}
+
+        const uint8_t* buf() const {
+            std::lock_guard lock(_mutex);
+            if(_cpp) {
+                return _cpp->data();
+            } else {
+                return _platform ? _platform->buf() : nullptr;
+            }
+        }
+        size_t len() const {
+            std::lock_guard lock(_mutex);
+            if(_cpp) {
+                return _cpp->size();
+            } else {
+                return _platform ? _platform->len() : 0;
+            }
+        }
+        uint8_t* mutableBuf() {
+            std::lock_guard lock(_mutex);
+            if(_cpp) {
+                return _cpp->data();
+            } else {
+                return _platform ? _platform->mutableBuf() : nullptr;
+            }
+        }
+
+        template<typename PlatformRefT>
+        const PlatformRefT* getOrBindPlatform() {
+            std::lock_guard lock(_mutex);
+            if(_cpp) {
+                _platform = std::make_unique<PlatformRefT>(std::move(_cpp.value()));
+                _cpp.reset();
+            }
+            return dynamic_cast<PlatformRefT*>(_platform.get());
+        }
+    };
+
+    std::shared_ptr<RefState> _ref;
 };
 
 } // namespace djinni
+#endif

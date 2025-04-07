@@ -14,28 +14,20 @@
   * limitations under the License.
   */
 
+#pragma once
+#ifdef __cplusplus
+
 #include "DataRef.hpp"
 
-#if DATAREF_OBJC
-
+#include <CoreFoundation/CFData.h>
 #include <cassert>
 
 namespace djinni {
 
-class DataRefObjc : public DataRef::Impl {
+class DataRefObjc : public DataRef::PlatformRef {
 public:
-    // create empty buffer from c++
-    explicit DataRefObjc(size_t len) {
-        allocate(len);
-    }
-    // create new data object and initialize with data. although this still
-    // copies data, it does the allocation and initialization in one step.
-    explicit DataRefObjc(const void* data, size_t len) {
-        _mutableData = CFDataCreateMutable(kCFAllocatorDefault, len);
-        assert(_mutableData != nullptr);
-        CFDataAppendBytes(_mutableData, reinterpret_cast<const uint8_t*>(data), len);
-        _data = _mutableData;
-    }
+    using PlatformObject = const void*;
+
     // take over a std::vector's buffer without copying it
     explicit DataRefObjc(std::vector<uint8_t>&& vec) {
         if (!vec.empty()) {
@@ -83,7 +75,7 @@ public:
         return _mutableData ? CFDataGetMutableBytePtr(_mutableData) : nullptr;
     }
 
-    PlatformObject platformObj() const override {
+    PlatformObject platformObj() const {
         return _data;
     }
 
@@ -121,29 +113,6 @@ private:
         _mutableData = nullptr; // our CFData is immutable because it can't realloc and resize
     }
 };
-
-DataRef::DataRef(size_t len) {
-    _impl = std::make_shared<DataRefObjc>(len);
-}
-
-DataRef::DataRef(const void* data, size_t len) {
-    _impl = std::make_shared<DataRefObjc>(data, len);
-}
-
-DataRef::DataRef(std::vector<uint8_t>&& vec) {
-    _impl = std::make_shared<DataRefObjc>(std::move(vec));
-}
-DataRef::DataRef(std::string&& str) {
-    _impl = std::make_shared<DataRefObjc>(std::move(str));
-}
-
-DataRef::DataRef(CFMutableDataRef platformObj) {
-    _impl = std::make_shared<DataRefObjc>(platformObj);
-}
-
-DataRef::DataRef(CFDataRef platformObj) {
-    _impl = std::make_shared<DataRefObjc>(platformObj);
-}
 
 } // namespace djinni
 

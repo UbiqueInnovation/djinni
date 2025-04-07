@@ -17,8 +17,8 @@
 #pragma once
 #ifdef __cplusplus
 
+#include "DataRefObjc.hpp"
 #include "DJIMarshal+Private.h"
-#include "DataRef.hpp"
 
 namespace djinni {
 struct NativeDataRef {
@@ -27,14 +27,14 @@ struct NativeDataRef {
 
     static CppType toCpp(ObjcType data) {
         if ([data isKindOfClass:[NSMutableData class]]) {
-            return DataRef((__bridge CFMutableDataRef)data);
+            return DataRef{std::make_unique<DataRefObjc>((__bridge CFMutableDataRef)data)};
         } else {
-            return DataRef((__bridge CFDataRef)data);
+            return DataRef{std::make_unique<DataRefObjc>((__bridge CFDataRef)data)};
         }
     }
 
     static ObjcType fromCpp(const CppType& c) {
-        return (__bridge NSData*)c.platformObj();
+        return (__bridge NSData*)c.getOrBindPlatform<DataRefObjc>()->platformObj();
     }
 
     using Boxed = NativeDataRef;

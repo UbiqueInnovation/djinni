@@ -14,18 +14,19 @@
   * limitations under the License.
   */
 
-#include "../cpp/DataRef.hpp"
-
-#if DATAREF_JNI
+#include "DataRefJNI.hpp"
 
 #include "djinni_support.hpp"
 
 #include <cassert>
+#include <cstring>
 #include <variant>
 
 namespace djinni {
 
-class DataRefJNI : public DataRef::Impl {
+using DataObj = std::variant<std::vector<uint8_t>, std::string>;
+
+class DataRefJNI::Internal {
     struct ByteBufferClassInfo {
         GlobalRef<jclass> classObject;
         jmethodID allocateDirect;
@@ -70,14 +71,12 @@ class DataRefJNI : public DataRef::Impl {
     };
 
 public:
-    using DataObj = std::variant<std::vector<uint8_t>, std::string>;
-
     // create an empty buffer from c++
-    explicit DataRefJNI(size_t len) {
+    explicit Internal(size_t len) {
         allocate(len);
     }
     // wrap a ByteBuffer object from java
-    explicit DataRefJNI(jobject data) {
+    explicit Internal(jobject data) {
         auto* env = jniGetThreadEnv();
         auto len = env->GetDirectBufferCapacity(data);
         if (len == -1) {
@@ -92,7 +91,7 @@ public:
         _buf = reinterpret_cast<uint8_t*>(env->GetDirectBufferAddress(_data.get()));
     }
     // take over a std::vector's buffer without copying it
-    explicit DataRefJNI(std::vector<uint8_t>&& vec) {
+    explicit Internal(std::vector<uint8_t>&& vec) {
         // NewDirectByteBuffer() does not accept 0 size, but 0 is a valid
         // argument for ByteBuffer.allocateDirect().
         if (!vec.empty()) {
@@ -102,7 +101,7 @@ public:
         }
     }
     // take over a std::string's buffer without copying it
-    explicit DataRefJNI(std::string&& str) {
+    explicit Internal(std::string&& str) {
         if (!str.empty()) {
             takeOver(std::move(str));
         } else {
@@ -110,19 +109,19 @@ public:
         }
     }
 
-    DataRefJNI(const DataRefJNI&) = delete;
+    Internal(const Internal&) = delete;
 
-    const uint8_t* buf() const override {
+    const uint8_t* buf() const {
         return _buf;
     }
-    size_t len() const override {
+    size_t len() const {
         return _len;
     }
-    uint8_t* mutableBuf() override {
+    uint8_t* mutableBuf() {
         return _readonly ? nullptr : _buf;
     }
 
-    PlatformObject platformObj() const override {
+    PlatformObject platformObj() const {
         return _data.get();
     }
 
@@ -181,31 +180,37 @@ private:
     }
 };
 
-DataRef::DataRef(size_t len) {
-    _impl = std::make_shared<DataRefJNI>(len);
+DataRefJNI::DataRefJNI(std::vector<uint8_t>&& vec) {
+    _impl = std::make_unique<Internal>(std::move(vec));
 }
 
-// copy data into the new buffer object
-DataRef::DataRef(const void* data, size_t len) {
-    _impl = std::make_shared<DataRefJNI>(len);
-    memcpy(mutableBuf(), data, len);
+DataRefJNI::DataRefJNI(void* platformObj) {
+    _impl = std::make_unique<Internal>(reinterpret_cast<jobject>(platformObj));
 }
 
-DataRef::DataRef(std::vector<uint8_t>&& vec) {
-    _impl = std::make_shared<DataRefJNI>(std::move(vec));
+DataRefJNI::DataRefJNI(DataRefJNI&& o) = default;
+
+DataRefJNI::~DataRefJNI() = default;
+
+const uint8_t* DataRefJNI::buf() const {
+    return _impl->buf();
 }
 
-DataRef::DataRef(std::string&& str) {
-    _impl = std::make_shared<DataRefJNI>(std::move(str));
+size_t DataRefJNI::len() const {
+    return _impl->len();
 }
 
-DataRef::DataRef(void* platformObj) {
-    _impl = std::make_shared<DataRefJNI>(reinterpret_cast<jobject>(platformObj));
+uint8_t* DataRefJNI::mutableBuf() {
+    return _impl->mutableBuf();
+}
+
+DataRefJNI::PlatformObject DataRefJNI::platformObj() const {
+    return _impl->platformObj();
 }
 
 // NOLINTNEXTLINE
 static void DataRefHelper_nativeDestroy(JNIEnv* /*unused*/, jclass /*unused*/, jlong nativeRef) {
-    delete reinterpret_cast<DataRefJNI::DataObj*>(nativeRef);
+    delete reinterpret_cast<DataObj*>(nativeRef);
 }
 
 static const JNINativeMethod kNativeMethods[] = {{
@@ -219,5 +224,3 @@ static auto sRegisterMethods =
     JNIMethodLoadAutoRegister("com/snapchat/djinni/DataRefHelper", kNativeMethods);
 
 } // namespace djinni
-
-#endif

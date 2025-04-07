@@ -14,42 +14,26 @@
   * limitations under the License.
   */
 
-#include "../cpp/DataRef.hpp"
+#pragma once
 
-#if DATAREF_WASM
+#include "../cpp/DataRef.hpp"
 
 #include "djinni_wasm.hpp"
 #include <cassert>
 
 namespace djinni {
-
-class DataRefWasm : public DataRef::Impl {
+class DataRefWasm : public DataRef::PlatformRef {
 public:
+    using PlatformObject = emscripten::val;
+
     // create empty buffer from c++
     explicit DataRefWasm(size_t len) {
         allocate(len);
-    }
-    // create new data object and initialize with data. although this still
-    // copies data, it does the allocation and initialization in one step.
-    explicit DataRefWasm(const void* data, size_t len) {
-        auto* dbuf = new GenericBuffer<std::vector<uint8_t>>(
-            reinterpret_cast<const uint8_t*>(data), len);
-        // The js object will destroy the c++ object when its GCed
-        _data = dbuf->createJsObject();
     }
     // take over a std::vector's buffer without copying it
     explicit DataRefWasm(std::vector<uint8_t>&& vec) {
         if (!vec.empty()) {
             auto* dbuf = new GenericBuffer<std::vector<uint8_t>>(std::move(vec));
-            _data = dbuf->createJsObject();
-        } else {
-            allocate(0);
-        }
-    }
-    // take over a std::string's buffer without copying it
-    explicit DataRefWasm(std::string&& str) {
-        if (!str.empty()) {
-            auto* dbuf = new GenericBuffer<std::string>(std::move(str));
             _data = dbuf->createJsObject();
         } else {
             allocate(0);
@@ -72,7 +56,7 @@ public:
         return reinterpret_cast<uint8_t*>(_data["byteOffset"].as<unsigned>());
     }
 
-    PlatformObject platformObj() const override {
+    PlatformObject platformObj() const {
         return _data;
     }
 
@@ -84,26 +68,4 @@ private:
         _data = dbuf->createJsObject();
     }
 };
-
-DataRef::DataRef(size_t len) {
-    _impl = std::make_shared<DataRefWasm>(len);
-}
-
-DataRef::DataRef(const void* data, size_t len) {
-    _impl = std::make_shared<DataRefWasm>(data, len);
-}
-
-DataRef::DataRef(std::vector<uint8_t>&& vec) {
-    _impl = std::make_shared<DataRefWasm>(std::move(vec));
-}
-DataRef::DataRef(std::string&& str) {
-    _impl = std::make_shared<DataRefWasm>(std::move(str));
-}
-
-DataRef::DataRef(PlatformObject platformObj) {
-    _impl = std::make_shared<DataRefWasm>(platformObj);
-}
-
 } // namespace djinni
-
-#endif
