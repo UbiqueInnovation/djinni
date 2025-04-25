@@ -16,8 +16,7 @@
 
 #pragma once
 
-#include "djinni_wasm.hpp"
-#include "../cpp/DataRef.hpp"
+#include "DataRefWasm.hpp"
 
 namespace djinni {
 
@@ -26,11 +25,11 @@ struct NativeDataRef {
     using JsType = em::val;
 
     static CppType toCpp(const JsType& data) {
-        return DataRef(data);
+        return DataRef{std::make_unique<DataRefWasm>(data)};
     }
 
     static JsType fromCpp(const CppType& c) {
-        return c.platformObj();
+        return c.getOrBindPlatform<DataRefWasm>()->platformObj();
     }
 
     using Boxed = NativeDataRef;
