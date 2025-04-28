@@ -25,6 +25,11 @@
 #include <mutex>
 #include <cassert>
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__) && !defined(NDEBUG)
+#include <pthread.h>
+#include <emscripten/threading.h>
+#endif
+
 #ifdef __cpp_coroutines
 #if __has_include(<coroutine>)
     #include <coroutine>
@@ -273,8 +278,13 @@ public:
         auto sharedState = std::atomic_load(&_sharedState);
         assert(sharedState);    // call on invalid future will trigger assertion
         std::unique_lock lk(sharedState->mutex);
-#if defined(__EMSCRIPTEN__)
-        assert(sharedState->isReady()); // in wasm we must not block and wait
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+        // in wasm we must not block and wait on main thread
+        assert(sharedState->isReady() || pthread_self() != emscripten_main_runtime_thread_id());
+        sharedState->cv.wait(lk, [state = sharedState] {return state->isReady();});
+#elif defined(__EMSCRIPTEN__)
+        // in wasm we must not block and wait on main thread
+        assert(sharedState->isReady());
 #else
         sharedState->cv.wait(lk, [state = sharedState] {return state->isReady();});
 #endif
@@ -286,8 +296,13 @@ public:
         sharedState = std::atomic_exchange(&_sharedState, sharedState);
         assert(sharedState);    // call on invalid future will trigger assertion
         std::unique_lock lk(sharedState->mutex);
-#if defined(__EMSCRIPTEN__)
-        assert(sharedState->isReady()); // in wasm we must not block and wait
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+        // in wasm we must not block and wait on main thread
+        assert(sharedState->isReady() || pthread_self() != emscripten_main_runtime_thread_id());
+        sharedState->cv.wait(lk, [state = sharedState] {return state->isReady();});
+#elif defined(__EMSCRIPTEN__)
+        // in wasm we must not block and wait on main thread
+        assert(sharedState->isReady());
 #else
         sharedState->cv.wait(lk, [state = sharedState] {return state->isReady();});
 #endif
