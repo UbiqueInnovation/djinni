@@ -45,7 +45,9 @@ case class MExtern(
   jni: MExtern.Jni,
   wasm: MExtern.Wasm,
   ts: MExtern.Ts,
-  kmp: MExtern.Kmp
+  kmp: MExtern.Kmp,
+  swift: MExtern.Swift,
+  swiftxx: MExtern.Swiftxx
 ) extends Meta
 object MExtern {
   // These hold the information marshals need to interface with existing types correctly
@@ -100,6 +102,17 @@ object MExtern {
     typename: String, // The TypeScript type
     module: String,   // The module to import for the type
     generic: Boolean
+  )
+  case class Swift(
+    typename: String,
+    module: String,
+    translator: String,
+    translatorModule: String,
+    generic: Boolean
+  )
+  case class Swiftxx(
+    translator: String,
+    header: String
   )
 }
 case class MProtobuf(name: String, override val numParams: Int, body: ProtobufMessage) extends Meta

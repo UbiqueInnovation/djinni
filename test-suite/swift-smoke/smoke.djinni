@@ -1,0 +1,10 @@
+@extern "../../support-lib/dataref.yaml"
+coordinate = record { x: f64; y: f64; } deriving(eq)
+callback = interface +sw { transform(value: coordinate): coordinate; }
+engine = interface +c {
+    static create(): engine;
+    run(value: coordinate, callback: callback): coordinate;
+    fail();
+    echo(data: DataRef): DataRef;
+    bytes(): DataRef;
+}

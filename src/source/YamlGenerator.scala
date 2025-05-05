@@ -36,6 +36,8 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
   val jniMarshal = new JNIMarshal(spec)
   val wasmMarshal = new WasmGenerator(spec)
   val tsMarshal = new TsGenerator(spec)
+  val swiftMarshal = new SwiftMarshal(spec)
+  val swiftxxMarshal = new SwiftxxMarshal(spec)
 
   case class QuotedString(str: String) // For anything that migt require escaping
 
@@ -74,6 +76,12 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
     w.wl("jni:").nested { write(w, jni(td)) }
     w.wl("wasm:").nested { write(w, wasm(td)) }
     w.wl("ts:").nested {write(w, ts(td)) }
+    if (spec.swiftOutFolder.isDefined) {
+      w.wl("swift:").nested {write(w, swift(td))}
+    }
+    if (spec.swiftxxOutFolder.isDefined) {
+      w.wl("swiftxx:").nested {write(w, swiftxx(td))}
+    }
   }
 
   private def write(w: IndentWriter, m: Map[String, Any]) {
@@ -115,7 +123,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
   )
 
   private def typeDef(td: TypeDecl) = {
-    def ext(e: Ext): String = (if(e.cpp) " +c" else "") + (if(e.objc) " +o" else "") + (if(e.java) " +j" else "") + (if(e.js) " +w" else "")
+    def ext(e: Ext): String = (if(e.cpp) " +c" else "") + (if(e.objc) " +o" else "") + (if(e.java) " +j" else "") + (if(e.js) " +w" else "") + (if(e.swift) " +sw" else "")
     def deriving(r: Record) = {
       if(r.derivingTypes.isEmpty) {
         ""
@@ -201,6 +209,17 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
     "typename" -> tsMarshal.toTsType(mexpr(td), /*addNullability*/ false),
     "module" -> QuotedString(spec.tsImportPrefix + spec.tsModule)
     //, "generic" -> false
+  )
+
+  private def swift(td: TypeDecl) = Map[String, Any](
+    "typename" -> QuotedString(swiftMarshal.typename(td.ident, td.body)),
+    "module" -> QuotedString(spec.swiftModule),
+    "translator" -> QuotedString(swiftMarshal.helperName(mexpr(td))),
+    "translator.module" -> QuotedString(spec.swiftModule)
+  )
+  private def swiftxx(td: TypeDecl) = Map[String, Any](
+    "translator" -> QuotedString(swiftxxMarshal.helperName(mexpr(td))),
+    "header" -> QuotedString(swiftxxMarshal.include(td.ident))
   )
 
   // TODO: there has to be a way to do all this without the MExpr/Meta conversions?
@@ -290,7 +309,16 @@ object YamlGenerator {
       getOptionalField(td, "ts", "generic", false)),
     MExtern.Kmp(
       nested(td, "kmp")("package").toString,
-      nested(td, "kmp")("bridgePrefix").toString)
+      nested(td, "kmp")("bridgePrefix").toString),
+    MExtern.Swift(
+      getOptionalField(td, "swift", "typename"),
+      getOptionalField(td, "swift", "module", ""),
+      getOptionalField(td, "swift", "translator"),
+      getOptionalField(td, "swift", "translator.module", ""),
+      getOptionalField(td, "swift", "generic", false)),
+    MExtern.Swiftxx(
+      getOptionalField(td, "swiftxx", "translator"),
+      getOptionalField(td, "swiftxx", "header"))
   )
 
   private def nested(td: ExternTypeDecl, key: String) = {
@@ -308,8 +336,7 @@ object YamlGenerator {
       nested(td, key)(subKey).toString
     } catch {
       case e: java.util.NoSuchElementException => {
-        println(s"Warning: in ${td.origin}, missing field $key/$subKey")
-        "[unspecified]"
+        s"[unspecified field `$key/$subKey` in `${td.origin}`]"
       }
     }
   }
