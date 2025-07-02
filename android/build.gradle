@@ -7,7 +7,7 @@ buildscript {
 	dependencies {
 		classpath "com.android.tools.build:gradle:7.4.2"
 		classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-		classpath 'com.vanniktech:gradle-maven-publish-plugin:0.25.2'
+		classpath 'com.vanniktech:gradle-maven-publish-plugin:0.33.0'
 		classpath 'org.jetbrains.dokka:dokka-gradle-plugin:1.7.10'
 	}
 }
@@ -20,8 +20,6 @@ repositories {
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'com.vanniktech.maven.publish'
-
-import com.vanniktech.maven.publish.SonatypeHost
 
 android {
 	compileSdkVersion 33
@@ -75,7 +73,7 @@ publishing {
 }
 
 mavenPublishing {
-	publishToMavenCentral(SonatypeHost.S01, true)
+	publishToMavenCentral(true)
 	signAllPublications()
 }
 
