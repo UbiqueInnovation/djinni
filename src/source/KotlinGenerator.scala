@@ -5,6 +5,7 @@ import djinni.ast._
 import djinni.generatorTools._
 import djinni.meta._
 import djinni.writer.IndentWriter
+import java.io.StringWriter
 
 import scala.collection.mutable
 
@@ -44,41 +45,41 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       f(w)
     })
   }
+  
+  def writeKotlinConst(w: IndentWriter, ty: TypeRef, v: Any): Unit = v match {
+    case l: Long if marshal.fieldType(ty).equalsIgnoreCase("long") => w.w(l.toString + "L")
+    case l: Long => w.w(l.toString)
+    case d: Double if marshal.fieldType(ty).equalsIgnoreCase("float") => w.w(d.toString + "f")
+    case d: Double => w.w(d.toString)
+    case b: Boolean => w.w(if (b) "true" else "false")
+    case s: String => w.w(s)
+    case e: EnumValue =>  w.w(s"${marshal.typename(ty)}.${idJava.enum(e)}")
+    case v: ConstRef => w.w(idJava.const(v))
+    case z: Map[_, _] => { // Value is record
+      val recordMdef = ty.resolved.base.asInstanceOf[MDef]
+      val record = recordMdef.body.asInstanceOf[Record]
+      val vMap = z.asInstanceOf[Map[String, Any]]
+      w.wl(s"${marshal.typename(ty)}(")
+      w.increase()
+      // Use exact sequence
+      val skipFirst = SkipFirst()
+      for (f <- record.fields) {
+        skipFirst {w.wl(",")}
+        writeKotlinConst(w, f.ty, vMap.apply(f.ident.name))
+        w.w(" /* " + idJava.field(f.ident) + " */ ")
+      }
+      w.w(")")
+      w.decrease()
+    }
+  }
 
   def generateJavaConstants(w: IndentWriter, consts: Seq[Const]) = {
-
-    def writeJavaConst(w: IndentWriter, ty: TypeRef, v: Any): Unit = v match {
-      case l: Long if marshal.fieldType(ty).equalsIgnoreCase("long") => w.w(l.toString + "L")
-      case l: Long => w.w(l.toString)
-      case d: Double if marshal.fieldType(ty).equalsIgnoreCase("float") => w.w(d.toString + "f")
-      case d: Double => w.w(d.toString)
-      case b: Boolean => w.w(if (b) "true" else "false")
-      case s: String => w.w(s)
-      case e: EnumValue =>  w.w(s"${marshal.typename(ty)}.${idJava.enum(e)}")
-      case v: ConstRef => w.w(idJava.const(v))
-      case z: Map[_, _] => { // Value is record
-        val recordMdef = ty.resolved.base.asInstanceOf[MDef]
-        val record = recordMdef.body.asInstanceOf[Record]
-        val vMap = z.asInstanceOf[Map[String, Any]]
-        w.wl(s"${marshal.typename(ty)}(")
-        w.increase()
-        // Use exact sequence
-        val skipFirst = SkipFirst()
-        for (f <- record.fields) {
-          skipFirst {w.wl(",")}
-          writeJavaConst(w, f.ty, vMap.apply(f.ident.name))
-          w.w(" /* " + idJava.field(f.ident) + " */ ")
-        }
-        w.w(")")
-        w.decrease()
-      }
-    }
     for (c <- consts) {
       writeDoc(w, c.doc)
       javaAnnotationHeader.foreach(w.wl)
 
       w.w(s"val ${idJava.const(c.ident)}: ${marshal.fieldType(c.ty)} = ")
-      writeJavaConst(w, c.ty, c.value)
+      writeKotlinConst(w, c.ty, c.value)
       w.wl
     }
   }
@@ -251,7 +252,11 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
 
   override def generateRecord(origin: String, ident: Ident, doc: Doc, params: Seq[TypeParam], r: Record) {
     val refs = new JavaRefs()
-    r.fields.foreach(f => refs.find(f.ty))
+    r.fields.foreach(f => {
+      refs.find(f.ty)
+      f.defaultValue.foreach(v => refs.find(f.ty)) // find references in default values
+    })
+    r.consts.foreach(c => refs.find(c.ty))
 
     // Imports
     if (r.derivingTypes.contains(DerivingType.AndroidParcelable)) {
@@ -298,7 +303,11 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
         for (f <- r.fields) {
           val fieldType = marshal.fieldType(f.ty)
           w.w(s"val ${idJava.field(f.ident)}: $fieldType")
-          if (spec.kotlinRecordsPrimitiveDefaults) {
+          
+          if (f.defaultValue.isDefined) {
+            w.w(" = ")
+            writeKotlinConst(w, f.ty, f.defaultValue.get)
+          } else if (spec.kotlinRecordsPrimitiveDefaults) {
             fieldType match {
               case "Boolean" => w.w(s" = false")
               case "Int" => w.w(s" = 0")

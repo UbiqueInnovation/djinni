@@ -119,7 +119,27 @@ private def resolveConst(typeDef: TypeDef) {
   }
   typeDef match {
     case e: Enum =>
-    case r: Record => f(r.consts)
+    case r: Record =>
+      val resolvedConsts = new ArrayBuffer[Const]
+      for (c <- r.consts) {
+        try {
+          constTypeCheck(c.ty.resolved, c.value, resolvedConsts)
+        } catch {
+          case e: AssertionError =>
+            throw Error(c.ident.loc, e.getMessage()).toException
+        }
+        resolvedConsts.append(c)
+      }
+      for (f <- r.fields) { // My new part
+        f.defaultValue.foreach { v =>
+          try {
+            constTypeCheck(f.ty.resolved, v, resolvedConsts)
+          } catch {
+            case e: AssertionError =>
+              throw Error(f.ident.loc, s"Default value for field '${f.ident.name}' has wrong type: ${e.getMessage}").toException
+          }
+        }
+      }
     case i: Interface => f(i.consts)
     case p: ProtobufMessage=>
   }
@@ -216,9 +236,19 @@ private def constTypeCheck(ty: MExpr, value: Any, resolvedConsts: Seq[Const]) {
 
 private def resolveRecord(scope: Scope, r: Record) {
   val dupeChecker = new DupeChecker("record field")
+  var hasDefault = false
   for (f <- r.fields) {
     dupeChecker.check(f.ident)
     resolveRef(scope, f.ty)
+
+    if (f.defaultValue.isDefined) {
+      hasDefault = true
+    } else {
+      if (hasDefault) {
+        throw new Error(f.ident.loc, "Fields without default values must come before fields with default values.").toException
+      }
+    }
+
     // Deriving Type Check
     if (r.ext.any())
       if (r.derivingTypes.contains(DerivingType.Ord)) {
@@ -292,6 +322,9 @@ private def resolveInterface(scope: Scope, i: Interface) {
   for (m <- i.methods) {
     dupeChecker.check(m.ident)
     for (p <- m.params) {
+      if (p.defaultValue.isDefined) {
+        throw new Error(p.ident.loc, "Default arguments are not supported for interface methods.").toException
+      }
       resolveRef(scope, p.ty)
     }
     m.ret match {
@@ -345,7 +378,7 @@ private class DupeChecker(kind: String)
 "associativity", "catch", "class", "convenience", "deinit", "didSet", "extension", "fallthrough", "final", "func", "get", "guard", "in", "infix", "init", "inout", "internal", "lazy", "let", "mutating",
 "nil", "operator", "override", "postfix", "precedence", "prefix", "private", "public", "repeat", "required", "self", "set", "static", "subscript", "super", "throws", "try", "var", "weak", "where", "willSet",
 //Java
-"abstract", "new", "assert", "package", "synchronized", "this", "implements", "protected", "throw", "byte", "import", "transient", "extends", "short", "finally", "interface", "strictfp", "native",
+"abstract", "new", "package", "synchronized", "this", "implements", "protected", "throw", "byte", "import", "transient", "extends", "short", "finally", "interface", "strictfp", "native",
 //C#/Windows
 "small")
 //"description" would be a NSObject keyword, but we didn't include it in the list, because we need it and ios has to do a workaround

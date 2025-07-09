@@ -23,6 +23,7 @@ import djinni.ast._
 import djinni.generatorTools._
 import djinni.meta._
 import djinni.writer.IndentWriter
+import java.io.StringWriter
 
 import scala.collection.mutable
 
@@ -66,35 +67,34 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
     })
   }
 
-  def generateJavaConstants(w: IndentWriter, consts: Seq[Const]) = {
-
-    def writeJavaConst(w: IndentWriter, ty: TypeRef, v: Any): Unit = v match {
-      case l: Long if marshal.fieldType(ty).equalsIgnoreCase("long") => w.w(l.toString + "l")
-      case l: Long => w.w(l.toString)
-      case d: Double if marshal.fieldType(ty).equalsIgnoreCase("float") => w.w(d.toString + "f")
-      case d: Double => w.w(d.toString)
-      case b: Boolean => w.w(if (b) "true" else "false")
-      case s: String => w.w(s)
-      case e: EnumValue =>  w.w(s"${marshal.typename(ty)}.${idJava.enum(e)}")
-      case v: ConstRef => w.w(idJava.const(v))
-      case z: Map[_, _] => { // Value is record
-        val recordMdef = ty.resolved.base.asInstanceOf[MDef]
-        val record = recordMdef.body.asInstanceOf[Record]
-        val vMap = z.asInstanceOf[Map[String, Any]]
-        w.wl(s"new ${marshal.typename(ty)}(")
-        w.increase()
-        // Use exact sequence
-        val skipFirst = SkipFirst()
-        for (f <- record.fields) {
-          skipFirst {w.wl(",")}
-          writeJavaConst(w, f.ty, vMap.apply(f.ident.name))
-          w.w(" /* " + idJava.field(f.ident) + " */ ")
-        }
-        w.w(")")
-        w.decrease()
+  def writeJavaConst(w: IndentWriter, ty: TypeRef, v: Any): Unit = v match {
+    case l: Long if marshal.fieldType(ty).equalsIgnoreCase("long") => w.w(l.toString + "l")
+    case l: Long => w.w(l.toString)
+    case d: Double if marshal.fieldType(ty).equalsIgnoreCase("float") => w.w(d.toString + "f")
+    case d: Double => w.w(d.toString)
+    case b: Boolean => w.w(if (b) "true" else "false")
+    case s: String => w.w(s)
+    case e: EnumValue => w.w(s"${marshal.typename(ty)}.${idJava.enum(e)}")
+    case v: ConstRef => w.w(idJava.const(v))
+    case z: Map[_, _] => { // Value is record
+      val recordMdef = ty.resolved.base.asInstanceOf[MDef]
+      val record = recordMdef.body.asInstanceOf[Record]
+      val vMap = z.asInstanceOf[Map[String, Any]]
+      w.wl(s"new ${marshal.typename(ty)}(")
+      w.increase()
+      // Use exact sequence
+      val skipFirst = SkipFirst()
+      for (f <- record.fields) {
+        skipFirst { w.wl(",") }
+        writeJavaConst(w, f.ty, vMap.apply(f.ident.name))
+        w.w(" /* " + idJava.field(f.ident) + " */ ")
       }
+      w.w(")")
+      w.decrease()
     }
+  }
 
+  def generateJavaConstants(w: IndentWriter, consts: Seq[Const]) = {
     for (c <- consts) {
       writeDoc(w, c.doc)
       javaAnnotationHeader.foreach(w.wl)
@@ -254,7 +254,12 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
 
   override def generateRecord(origin: String, ident: Ident, doc: Doc, params: Seq[TypeParam], r: Record) {
     val refs = new JavaRefs()
-    r.fields.foreach(f => refs.find(f.ty))
+    r.fields.foreach(f => {
+      refs.find(f.ty)
+      f.defaultValue.foreach(v => refs.find(f.ty)) // find references in default values
+    })
+    r.consts.foreach(c => refs.find(c.ty))
+
 
     val javaName = if (r.ext.java) (ident.name + "_base") else ident.name
     val javaFinal = if (!r.ext.java && spec.javaUseFinalForRecord) "final " else ""
@@ -297,6 +302,38 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
         }
         w.wl("}")
 
+        // Overloaded constructors
+        val firstDefault = r.fields.indexWhere(_.defaultValue.isDefined)
+        if (firstDefault != -1) {
+          for (i <- (r.fields.length - 1) to firstDefault by -1) {
+            val constructorFields = r.fields.slice(0, i)
+            w.wl
+            w.w(s"public $self(").nestedN(2) {
+              val skipFirst = SkipFirst()
+              for (f <- constructorFields) {
+                skipFirst { w.wl(",") }
+                marshal.nullityAnnotation(f.ty).map(annotation => w.w(annotation + " "))
+                w.w(marshal.paramType(f.ty) + " " + idJava.local(f.ident))
+              }
+              w.wl(") {")
+            }
+            w.nested {
+              val constructorCallParams = mutable.ArrayBuffer[String]()
+              constructorFields.foreach(f => constructorCallParams += idJava.local(f.ident))
+              for (j <- i until r.fields.length) {
+                val f = r.fields(j)
+                val sw = new StringWriter()
+                val iw = new IndentWriter(sw)
+                writeJavaConst(iw, f.ty, f.defaultValue.get)
+                constructorCallParams += sw.toString
+              }
+
+              w.wl(s"this(${constructorCallParams.mkString(", ")});")
+            }
+            w.wl("}")
+          }
+        }
+        
         // Accessors
         for (f <- r.fields) {
           w.wl

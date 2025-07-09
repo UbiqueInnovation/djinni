@@ -24,6 +24,7 @@ import djinni.generatorTools._
 import djinni.meta._
 import djinni.syntax.Error
 import djinni.writer.IndentWriter
+import java.io.StringWriter
 
 import scala.collection.mutable
 import scala.collection.parallel.immutable
@@ -184,8 +185,10 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     val refs = new ObjcRefs()
     for (c <- r.consts)
       refs.find(c.ty)
-    for (f <- r.fields)
+    for (f <- r.fields) {
       refs.find(f.ty)
+      f.defaultValue.foreach(v => refs.find(f.ty)) // find references in default values
+    }
 
     val objcName = ident.name + (if (r.ext.objc) "_base" else "")
     val noBaseSelf = marshal.typename(ident, r) // Used for constant names
@@ -197,7 +200,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     }
 
     refs.header.add("#import <Foundation/Foundation.h>")
-    refs.body.add("!#import " + q((if (r.ext.objc) spec.objcExtendedRecordIncludePrefix else spec.objcIncludePrefix) + marshal.headerName(ident)))
+    refs.body.add("!#import " + q((if (r.ext.objc) spec.objcExtendedRecordIncludePrefix else spec.objcIncludePrefix) + marshal.headerName(objcName)))
 
     if (r.ext.objc) {
       refs.header.add(s"@class $noBaseSelf;")
@@ -213,8 +216,6 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       case _ => false
     }
 
-    val firstInitializerArg = if(r.fields.isEmpty) "" else IdentStyle.camelUpper("with_" + r.fields.head.ident.name)
-
     // Generate the header file for record
     writeObjcFile(marshal.headerName(objcName), origin, refs.header, w => {
       writeDoc(w, doc)
@@ -227,14 +228,15 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl(s"@interface $self : $base")
       }
 
-      def writeInitializer(sign: String, prefix: String) {
-        val decl = s"$sign (nonnull instancetype)$prefix$firstInitializerArg"
-        writeAlignedObjcCall(w, decl, r.fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
+      def writeInitializer(w: IndentWriter, sign: String, prefix: String, fields: Seq[Field], designated: Boolean, end: String) {
+        val firstArg = if(fields.isEmpty) "" else IdentStyle.camelUpper("with_" + fields.head.ident.name)
+        val decl = s"$sign (nonnull instancetype)$prefix$firstArg"
+        writeAlignedObjcCall(w, decl, fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
 
-        if (prefix == "init") {
+        if (designated) {
           w.wl(" NS_DESIGNATED_INITIALIZER;")
         } else {
-          w.wl(";")
+          w.wl(end)
         }
       }
 
@@ -245,8 +247,26 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           w.wl("+ (nonnull instancetype)new NS_UNAVAILABLE;")
       }
 
-      writeInitializer("-", "init")
-      if (!r.ext.objc && !spec.objcDisableClassCtor) writeInitializer("+", IdentStyle.camelLower(objcName))
+      // Designated initializer
+      writeInitializer(w, "-", "init", r.fields, designated = true, ";")
+
+      // Convenience initializers
+      val firstDefault = r.fields.indexWhere(_.defaultValue.isDefined)
+      if (firstDefault != -1) {
+        for (i <- firstDefault until r.fields.length) {
+          writeInitializer(w, "-", "init", r.fields.slice(0, i), designated = false, ";")
+        }
+      }
+      
+      if (!r.ext.objc && !spec.objcDisableClassCtor) {
+        // Class factory methods
+        writeInitializer(w, "+", IdentStyle.camelLower(objcName), r.fields, designated = false, ";")
+        if (firstDefault != -1) {
+          for (i <- firstDefault until r.fields.length) {
+            writeInitializer(w, "+", IdentStyle.camelLower(objcName), r.fields.slice(0, i), designated = false, ";")
+          }
+        }
+      }
 
       for (c <- r.consts if !marshal.canBeConstVariable(c)) {
         w.wl
@@ -286,7 +306,9 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       w.wl
       w.wl(s"@implementation $self")
       w.wl
-      // Constructor from all fields (not copying)
+
+      // Designated Initializer
+      val firstInitializerArg = if(r.fields.isEmpty) "" else IdentStyle.camelUpper("with_" + r.fields.head.ident.name)
       val init = s"- (nonnull instancetype)init$firstInitializerArg"
       writeAlignedObjcCall(w, init, r.fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
       w.wl
@@ -303,19 +325,63 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       }
       w.wl
 
-      // Convenience initializer
-      if(!r.ext.objc && !spec.objcDisableClassCtor) {
-        val decl = s"+ (nonnull instancetype)${IdentStyle.camelLower(objcName)}$firstInitializerArg"
-        writeAlignedObjcCall(w, decl, r.fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
-        w.wl
-        w.braced {
-          val call = s"return [[self alloc] init$firstInitializerArg"
-          writeAlignedObjcCall(w, call, r.fields, "", f => (idObjc.field(f.ident), s"${idObjc.local(f.ident)}"))
-          w.wl("];")
+      // Convenience initializers
+      val firstDefault = r.fields.indexWhere(_.defaultValue.isDefined)
+      if (firstDefault != -1) {
+        for (i <- (r.fields.length - 1) to firstDefault by -1) {
+          val constructorFields = r.fields.slice(0, i)
+          val nextField = r.fields(i)
+          
+          val firstArg = if (constructorFields.isEmpty) "" else IdentStyle.camelUpper("with_" + constructorFields.head.ident.name)
+          val decl = s"- (nonnull instancetype)init$firstArg"
+          writeAlignedObjcCall(w, decl, constructorFields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
+          w.wl
+          w.braced {
+              val sw = new StringWriter()
+              writeObjcConstValue(new IndentWriter(sw), nextField.ty, nextField.defaultValue.get)
+
+              val callFirstArg = if (r.fields.isEmpty) "" else IdentStyle.camelUpper("with_" + r.fields.head.ident.name)
+              val call = s"return [self init$callFirstArg"
+              
+              // This is a bit complex due to obj-c method call syntax.
+              val callParams = mutable.LinkedHashMap[String, String]()
+              constructorFields.foreach(f => callParams += (idObjc.field(f.ident) -> idObjc.local(f.ident)))
+              callParams += (idObjc.field(nextField.ident) -> sw.toString)
+
+              val allFieldsUpToNext = r.fields.slice(0, i + 1)
+              val firstField = allFieldsUpToNext.head
+              w.w(call + s":${callParams(idObjc.field(firstField.ident))}")
+              for (f <- allFieldsUpToNext.tail) {
+                w.w(s" ${idObjc.field(f.ident)}:${callParams(idObjc.field(f.ident))}")
+              }
+              w.wl("];")
+          }
+          w.wl
         }
-        w.wl
       }
 
+      // Class factory methods
+      if(!r.ext.objc && !spec.objcDisableClassCtor) {
+        def writeClassInitializer(w: IndentWriter, fields: Seq[Field]): Unit = {
+          val firstArg = if(fields.isEmpty) "" else IdentStyle.camelUpper("with_" + fields.head.ident.name)
+          val decl = s"+ (nonnull instancetype)${IdentStyle.camelLower(objcName)}$firstArg"
+          writeAlignedObjcCall(w, decl, fields, "", f => (idObjc.field(f.ident), s"(${marshal.paramType(f.ty)})${idObjc.local(f.ident)}"))
+          w.wl
+          w.braced {
+            val call = s"return [[self alloc] init$firstArg"
+            writeAlignedObjcCall(w, call, fields, "];", f => (idObjc.field(f.ident), s"${idObjc.local(f.ident)}"))
+          }
+          w.wl
+        }
+
+        writeClassInitializer(w, r.fields)
+        if (firstDefault != -1) {
+          for (i <- firstDefault until r.fields.length) {
+            writeClassInitializer(w, r.fields.slice(0, i))
+          }
+        }
+      }
+      
       if (r.consts.nonEmpty) generateObjcConstants(w, r.consts, noBaseSelf, ObjcConstantType.ConstMethod)
 
       if (r.derivingTypes.contains(DerivingType.Eq)) {
