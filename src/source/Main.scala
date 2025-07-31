@@ -103,6 +103,7 @@ object Main {
     var jsIdentStyle = IdentStyle.jsDefault
     var tsOutFolder: Option[File] = None
     var tsModule: String = "module"
+    var tsImportPrefix: String = "./"
     var inFileListPath: Option[File] = None
     var outFileListPath: Option[File] = None
     var skipGeneration: Boolean = false
@@ -274,6 +275,8 @@ object Main {
         .text("The output for the TypeScript interface files (Generator disabled if unspecified).")
       opt[String]("ts-module").valueName("<name>").foreach(tsModule = _)
         .text("TypeScript declaration module name (default: \"module\").")
+      opt[String]("ts-import-prefix").valueName("<prefix>").foreach(tsImportPrefix = _)
+        .text("The prefix to be prepended to ts-module when this file is imported into other TypeScript interface files (default: \"./\").")
       note("")
       opt[File]("yaml-out").valueName("<out-folder>").foreach(x => yamlOutFolder = Some(x))
         .text("The output folder for YAML files (Generator disabled if unspecified).")
@@ -475,6 +478,7 @@ object Main {
       jsIdentStyle,
       tsOutFolder,
       tsModule,
+      tsImportPrefix,
       outFileListWriter,
       skipGeneration,
       ubFoundationHeader,
