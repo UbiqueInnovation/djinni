@@ -249,7 +249,7 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
       // write external references
       for ((module, syms) <- refs.imports) {
         if (module != "") {
-          w.wl(s"""import { ${syms.mkString(", ")} } from "$module"""")
+          w.wl(s"""import type { ${syms.mkString(", ")} } from "$module"""")
         }
       }
 
