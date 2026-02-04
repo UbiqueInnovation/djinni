@@ -22,7 +22,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
-#include <optional>
+#include <variant>
 #include <vector>
 
 namespace djinni {
@@ -48,6 +48,7 @@ public:
     explicit DataRef(const std::vector<uint8_t> &vec) : _ref(std::make_shared<RefState>(vec.data(), vec.size())) {}
     explicit DataRef(std::vector<uint8_t> &&vec) : _ref(std::make_shared<RefState>(std::move(vec))) {}
     explicit DataRef(const void *data, size_t len) : _ref(std::make_shared<RefState>(data, len)) {}
+    explicit DataRef(std::unique_ptr<uint8_t> data, size_t len) : _ref(std::make_shared<RefState>(std::move(data), len)) {}
     explicit DataRef(const std::string &str) : _ref(std::make_shared<RefState>(str.data(), str.size())) {}
     explicit DataRef(std::string &&str) : _ref(std::make_shared<RefState>(std::move(str))) {}
     explicit DataRef(std::unique_ptr<PlatformRef> platform) : _ref(std::make_shared<RefState>(std::move(platform))) {}
@@ -76,41 +77,61 @@ private:
     // If the DataRef was created from C++, this will be bound to the platform only when explicitly accessed from there.
     class RefState {
     private:
+        struct UniquePtrData {
+            std::unique_ptr<uint8_t> data;
+            size_t len;
+        };
+
+    private:
         mutable std::mutex _mutex;
-        std::optional<std::vector<uint8_t>> _cpp;
+        std::variant<
+            std::vector<uint8_t>,
+            UniquePtrData,
+            std::monostate> _cpp;
         std::unique_ptr<PlatformRef> _platform;
     public:
         explicit RefState(size_t len)
-            : _cpp(len) {}
+            : _cpp(std::vector<uint8_t>(len)) {}
         explicit RefState(std::vector<uint8_t> &&vec)
             : _cpp(std::move(vec)) {}
         explicit RefState(const void *data, size_t len)
-            : _cpp(len) {
-            memcpy(_cpp->data(), data, len);
+            : _cpp(std::vector<uint8_t>(len))
+        {
+            memcpy(std::get<std::vector<uint8_t>>(_cpp).data(), data, len);
         }
         explicit RefState(std::string &&str) : RefState(str.data(), str.size()) {}
+        explicit RefState(std::unique_ptr<uint8_t> data, size_t len)
+            : _cpp(UniquePtrData{std::move(data), len})
+        {
+        }
         explicit RefState(std::unique_ptr<PlatformRef> platform) : _platform(std::move(platform)) {}
 
         const uint8_t* buf() const {
             std::lock_guard lock(_mutex);
-            if(_cpp) {
-                return _cpp->data();
+            if(const auto *vec = std::get_if<std::vector<uint8_t>>(&_cpp)) {
+                return vec->data();
+            } else if(const auto *upd = std::get_if<UniquePtrData>(&_cpp)) {
+                return upd->data.get();
             } else {
                 return _platform ? _platform->buf() : nullptr;
             }
         }
         size_t len() const {
             std::lock_guard lock(_mutex);
-            if(_cpp) {
-                return _cpp->size();
+            if(const auto *vec = std::get_if<std::vector<uint8_t>>(&_cpp)) {
+                return vec->size();
+            } else if(const auto *upd = std::get_if<UniquePtrData>(&_cpp)) {
+                return upd->len;
             } else {
                 return _platform ? _platform->len() : 0;
             }
         }
         uint8_t* mutableBuf() {
             std::lock_guard lock(_mutex);
-            if(_cpp) {
-                return _cpp->data();
+            if(auto *vec = std::get_if<std::vector<uint8_t>>(&_cpp)) {
+                return vec->data();
+            } else if(auto *upd = std::get_if<UniquePtrData>(&_cpp)) {
+                return upd->data.get();
             } else {
                 return _platform ? _platform->mutableBuf() : nullptr;
             }
@@ -119,9 +140,16 @@ private:
         template<typename PlatformRefT>
         const PlatformRefT* getOrBindPlatform() {
             std::lock_guard lock(_mutex);
-            if(_cpp) {
-                _platform = std::make_unique<PlatformRefT>(std::move(_cpp.value()));
-                _cpp.reset();
+            if(!std::holds_alternative<std::monostate>(_cpp)) {
+                if(auto *vec = std::get_if<std::vector<uint8_t>>(&_cpp)) {
+                    _platform = std::make_unique<PlatformRefT>(std::move(*vec));
+                } else if(auto *upd = std::get_if<UniquePtrData>(&_cpp)) {
+                    // copy here, not supported in PlatformRef-implementations (yet).
+                    std::vector<uint8_t> copy(upd->len);
+                    memcpy(copy.data(), upd->data.get(), upd->len);
+                    _platform = std::make_unique<PlatformRefT>(std::move(*vec));
+                }
+                _cpp = std::monostate{};
             }
             return dynamic_cast<PlatformRefT*>(_platform.get());
         }
