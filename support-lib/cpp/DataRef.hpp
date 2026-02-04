@@ -85,9 +85,9 @@ private:
     private:
         mutable std::mutex _mutex;
         std::variant<
+            std::monostate,
             std::vector<uint8_t>,
-            UniquePtrData,
-            std::monostate> _cpp;
+            UniquePtrData> _cpp;
         std::unique_ptr<PlatformRef> _platform;
     public:
         explicit RefState(size_t len)
@@ -102,9 +102,10 @@ private:
         explicit RefState(std::string &&str) : RefState(str.data(), str.size()) {}
         explicit RefState(std::unique_ptr<uint8_t> data, size_t len)
             : _cpp(UniquePtrData{std::move(data), len})
-        {
-        }
-        explicit RefState(std::unique_ptr<PlatformRef> platform) : _platform(std::move(platform)) {}
+        {}
+        explicit RefState(std::unique_ptr<PlatformRef> platform)
+            : _platform(std::move(platform))
+        {}
 
         const uint8_t* buf() const {
             std::lock_guard lock(_mutex);
@@ -147,7 +148,7 @@ private:
                     // copy here, not supported in PlatformRef-implementations (yet).
                     std::vector<uint8_t> copy(upd->len);
                     memcpy(copy.data(), upd->data.get(), upd->len);
-                    _platform = std::make_unique<PlatformRefT>(std::move(*vec));
+                    _platform = std::make_unique<PlatformRefT>(std::move(copy));
                 }
                 _cpp = std::monostate{};
             }
