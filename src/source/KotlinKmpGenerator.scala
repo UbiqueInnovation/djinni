@@ -78,6 +78,11 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
   private def typeParamUse(params: Seq[TypeParam]): String = typeParamDecl(params)
 
+  private def shortTypeName(typeName: String): String = {
+    val idx = typeName.lastIndexOf('.')
+    if (idx < 0) typeName else typeName.substring(idx + 1)
+  }
+
   private def isEnum(tm: MExpr): Boolean = tm.base match {
     case d: MDef => d.defType == DEnum
     case e: MExtern => e.defType == DEnum
@@ -347,7 +352,11 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
     spec.kotlinKmpAndroidOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
-        val platformType = androidActualTypename(td) + typeParamsUse
+        val platformTypeBaseFq = androidActualTypename(td)
+        val platformTypeBase = shortTypeName(platformTypeBaseFq)
+        val platformType = platformTypeBase + typeParamsUse
+        w.wl(s"import $platformTypeBaseFq")
+        w.wl
         if (classKind) {
           w.wl(s"actual class $name$typeParams actual public constructor(")
           w.increase()
@@ -380,7 +389,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             w.wl("actual companion object").braced {
               for (c <- i.consts) {
                 val constType = kmpFieldType(c.ty.resolved)
-                val platformConst = s"${androidActualTypename(td)}.${idJava.const(c.ident)}"
+                val platformConst = s"$platformTypeBase.${idJava.const(c.ident)}"
                 w.wl(s"actual val ${idJava.const(c.ident)}: $constType")
                 w.wl(s"    get() = ${fromPlatformExpr(c.ty.resolved, platformConst, isAndroid = true)}")
               }
@@ -392,7 +401,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
                 w.wl(s"actual fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
                 w.increase()
                 val args = m.params.map(p => toPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = true))
-                val call = s"${androidActualTypename(td)}.${idJava.method(m.ident)}(${args.mkString(", ")})"
+                val call = s"$platformTypeBase.${idJava.method(m.ident)}(${args.mkString(", ")})"
                 if (retType == "Unit") {
                   w.wl(call)
                 } else {
