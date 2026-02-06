@@ -112,6 +112,7 @@ package object generatorTools {
                    jsIdentStyle: JsIdentStyle,
                    tsOutFolder: Option[File],
                    tsModule: String,
+                   tsImportPrefix: String,
                    outFileListWriter: Option[Writer],
                    skipGeneration: Boolean,
                    ubFoundationHeader: Option[String],

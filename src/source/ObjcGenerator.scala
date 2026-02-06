@@ -493,7 +493,14 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
             case MList =>
               f.ty.resolved.args.head.base match {
               case MBinary => w.wl("")
-              case MList => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}twoDimensionalArrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
+              case MList =>
+                val innermostTm = f.ty.resolved.args.head.args.head
+                val className = innermostTm.base match {
+                  case df: MDef if df.defType == DEnum => "NSNumber"
+                  case e: MExtern if e.defType == DEnum => "NSNumber"
+                  case _ => marshal.typename(innermostTm)
+                }
+                w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}twoDimensionalArrayOfClass:[${className} class] withArray:value];\n}")
               case MSet => w.wl("")
               case MMap => w.wl("")
               case MString => w.wl("")
