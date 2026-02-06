@@ -170,11 +170,53 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
     spec.kotlinKmpAndroidOutFolder.foreach(folder => {
       val actualType = androidActualTypename(td) + typeParamUse(td.params)
+      val useRecordWrapper = needsAndroidRecordWrapper(td, r)
       writeKotlinFile(folder, s"$name.kt", origin, w => {
-        w.wl(s"actual typealias $name$typeParams = $actualType")
-        w.wl
-        w.wl(s"internal fun $name$typeParams.asPlatform(): $actualType = this")
-        w.wl(s"internal fun $actualType.asKmp(): $name$typeParams = this")
+        if (useRecordWrapper) {
+          w.w(s"actual class $name$typeParams actual public constructor(")
+          if (r.fields.nonEmpty) {
+            w.wl
+            w.increase()
+            for (f <- r.fields) {
+              w.wl(s"${idJava.field(f.ident)}: ${kmpFieldType(f.ty.resolved)},")
+            }
+            w.decrease()
+            w.w(")")
+          } else {
+            w.w(")")
+          }
+          w.wl(" {")
+          w.increase()
+          for (f <- r.fields) {
+            val fieldName = idJava.field(f.ident)
+            w.wl(s"actual val $fieldName: ${kmpFieldType(f.ty.resolved)} = $fieldName")
+          }
+          w.decrease()
+          w.wl("}")
+          w.wl
+          w.wl(s"internal fun $name$typeParams.asPlatform(): $actualType = $actualType(")
+          w.increase()
+          for (f <- r.fields) {
+            val fieldName = idJava.field(f.ident)
+            w.wl(s"$fieldName = ${toPlatformExpr(f.ty.resolved, fieldName, isAndroid = true)},")
+          }
+          w.decrease()
+          w.wl(")")
+          w.wl(s"internal fun $actualType.asKmp(): $name$typeParams = $name(")
+          w.increase()
+          for (f <- r.fields) {
+            val fieldName = idJava.field(f.ident)
+            val platformField = s"this.$fieldName"
+            w.wl(s"$fieldName = ${fromPlatformExpr(f.ty.resolved, platformField, isAndroid = true)},")
+          }
+          w.decrease()
+          w.wl(")")
+        } else {
+          w.wl(s"actual typealias $name$typeParams = $actualType")
+          w.wl
+          w.wl(s"internal fun $name$typeParams.asPlatform(): $actualType = this")
+          w.wl(s"internal fun $actualType.asKmp(): $name$typeParams = this")
+        }
       })
     })
 
@@ -654,6 +696,41 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   private def kmpFieldType(tm: MExpr): String = {
     val name = kmpType(tm)
     if (kotlinMarshal.isEnumFlags(tm)) s"EnumSet<$name>" else name
+  }
+
+  private def needsAndroidRecordWrapper(td: TypeDecl, r: Record): Boolean = {
+    val rootName = canonicalName(td)
+    r.fields.exists(f => needsAndroidRecordWrapperType(f.ty.resolved, Set(rootName)))
+  }
+
+  private def needsAndroidRecordWrapperType(tm: MExpr, seen: Set[String]): Boolean = {
+    tm.base match {
+      case MOptional | MList | MSet | MArray =>
+        tm.args.exists(arg => needsAndroidRecordWrapperType(arg, seen))
+      case MMap =>
+        tm.args.exists(arg => needsAndroidRecordWrapperType(arg, seen))
+      case _ if meta.isInterface(tm) =>
+        true
+      case _ if isRecord(tm) =>
+        tm.base match {
+          case d: MDef =>
+            if (seen.contains(d.name)) {
+              false
+            } else {
+              d.body match {
+                case nested: Record =>
+                  nested.fields.exists(f => needsAndroidRecordWrapperType(f.ty.resolved, seen + d.name))
+                case _ => false
+              }
+            }
+          case _: MExtern =>
+            false
+          case _ =>
+            false
+        }
+      case _ =>
+        false
+    }
   }
 
   private def kmpReturnType(ret: Option[TypeRef]): String = ret.fold("Unit")(t => kmpFieldType(t.resolved))
