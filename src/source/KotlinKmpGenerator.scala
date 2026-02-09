@@ -839,7 +839,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         s"$expr.map { ${fromPlatformExpr(arg, itExpr, isAndroid, boxedPrimitive = true)} }.toTypedArray()"
       case _ if meta.isInterface(tm) =>
         val cast = s"(${expr} as ${platformType(tm, isAndroid)})"
-        s"requireNotNull($cast).asKmp()"
+        s"$cast.asKmp()"
       case _ if isRecord(tm) =>
         val cast = s"(${expr} as ${platformType(tm, isAndroid)})"
         s"$cast.asKmp()"
