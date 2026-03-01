@@ -194,7 +194,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           w.decrease()
           w.wl("}")
           w.wl
-          w.wl(s"internal fun $name$typeParams.asPlatform(): $actualType = $actualType(")
+          w.wl(s"public fun $name$typeParams.asPlatform(): $actualType = $actualType(")
           w.increase()
           for (f <- r.fields) {
             val fieldName = idJava.field(f.ident)
@@ -214,7 +214,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         } else {
           w.wl(s"actual typealias $name$typeParams = $actualType")
           w.wl
-          w.wl(s"internal fun $name$typeParams.asPlatform(): $actualType = this")
+          w.wl(s"public fun $name$typeParams.asPlatform(): $actualType = this")
           w.wl(s"public fun $actualType.asKmp(): $name$typeParams = this")
         }
       })
@@ -250,7 +250,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.decrease()
         w.wl("}")
         w.wl
-        w.wl(s"internal fun $name$typeParams.asPlatform(): $actualType = $actualType(")
+        w.wl(s"public fun $name$typeParams.asPlatform(): $actualType = $actualType(")
         w.increase()
         for (f <- r.fields) {
           val fieldName = idJava.field(f.ident)
@@ -291,7 +291,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
         w.wl(s"actual typealias $name = $actualType")
         w.wl
-        w.wl(s"internal fun $name.asPlatform(): $actualType = this")
+        w.wl(s"public fun $name.asPlatform(): $actualType = this")
         w.wl(s"public fun $actualType.asKmp(): $name = this")
       })
     })
@@ -339,7 +339,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.decrease()
         w.wl("}")
         w.wl
-        w.wl(s"internal fun $name.asPlatform(): $actualType = rawValue")
+        w.wl(s"public fun $name.asPlatform(): $actualType = rawValue")
       })
     })
   }
@@ -458,7 +458,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           w.decrease()
           w.wl("}")
           w.wl
-          w.wl(s"internal fun $name$typeParams.asPlatform(): $platformType = nativeHandle as $platformType")
+          w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = nativeHandle as $platformType")
           w.wl(s"public fun $platformType.asKmp(): $name$typeParams = $name(this)")
         } else {
           w.wl(s"actual interface $name$typeParams")
@@ -518,7 +518,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             }
           }
           w.wl
-          w.wl(s"internal fun $name$typeParams.asPlatform(): $platformType = when (this) {")
+          w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = when (this) {")
           w.wl(s"    is ${name}PlatformWrapper$typeParams -> this.nativeHandle")
           w.wl(s"    else -> ${name}PlatformProxy(this)")
           w.wl("}")
@@ -598,7 +598,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           w.decrease()
           w.wl("}")
           w.wl
-          w.wl(s"internal fun $name$typeParams.asPlatform(): $platformType = nativeHandle as $platformType")
+          w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = nativeHandle as $platformType")
           w.wl(s"public fun $platformType.asKmp(): $name$typeParams = $name(this)")
         } else {
           w.wl(s"actual interface $name$typeParams")
@@ -656,7 +656,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             }
           }
           w.wl
-          w.wl(s"internal fun $name$typeParams.asPlatform(): $platformType = when (this) {")
+          w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = when (this) {")
           w.wl(s"    is ${name}PlatformWrapper$typeParams -> this.nativeHandle")
           w.wl(s"    else -> ${name}PlatformProxy(this)")
           w.wl("}")
