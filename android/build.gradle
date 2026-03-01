@@ -63,10 +63,10 @@ publishing {
 	repositories {
 		maven {
 			name = "UbiqueMaven"
-			url = System.getenv('UBIQUE_ARTIFACTORY_URL') ?: ''
+			url = System.getenv('UB_ARTIFACTORY_URL') ?: ''
 			credentials {
-				username = System.getenv('UBIQUE_ARTIFACTORY_USER') ?: ''
-				password = System.getenv('UBIQUE_ARTIFACTORY_PASS') ?: ''
+				username = System.getenv('UB_ARTIFACTORY_USER') ?: ''
+				password = System.getenv('UB_ARTIFACTORY_PASSWORD') ?: ''
 			}
 		}
 	}
