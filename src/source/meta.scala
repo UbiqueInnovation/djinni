@@ -48,6 +48,9 @@ object MExtern {
   case class Objc(
     typename: String,
     header: String,
+    module: String,
+    kmpPackage: String,
+    kmpBridgePrefix: String,
     boxed: String, // Fully qualified Objective-C typename, must be an object. Only used for "record" types.
     pointer: Boolean, // True to construct pointer types and make it eligible for "nonnull" qualifier. Only used for "record" types.
     generic: Boolean, // Set to false to exclude type arguments from the ObjC class. This is should be true by default. Useful if template arguments are only used in C++.

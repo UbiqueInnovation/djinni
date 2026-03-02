@@ -11,6 +11,9 @@ objc:
   typename: 'DJFuture'
   header: '"$DJFuture.h"'
   boxed: 'DJFuture'
+  module: 'MapCoreSharedModule'
+  kmpPackage: 'io.openmobilemaps.mapscore.kmp'
+  kmpBridgePrefix: 'KM'
   pointer: true
   generic: true
   hash: '%s.hash'

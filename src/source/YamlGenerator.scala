@@ -143,9 +143,15 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
   )
 
   private def objc(td: TypeDecl) = {
+    val objcModule = spec.kotlinKmpIosModule.getOrElse(spec.moduleName)
+    val kmpPackage = spec.kotlinKmpPackage.getOrElse("")
+    val kmpBridgePrefix = spec.kotlinKmpBridgePrefix.getOrElse("")
     val map = Map[String, Any](
       "typename" -> QuotedString(objcMarshal.fqTypename(td.ident, td.body)),
       "header" -> QuotedString(objcMarshal.include(td.ident)),
+      "module" -> QuotedString(objcModule),
+      "kmpPackage" -> QuotedString(kmpPackage),
+      "kmpBridgePrefix" -> QuotedString(kmpBridgePrefix),
       "boxed" -> QuotedString(objcMarshal.boxedTypename(td)),
       "pointer" -> objcMarshal.isPointer(td),
       // "generic" -> false,
@@ -250,6 +256,9 @@ object YamlGenerator {
     MExtern.Objc(
       nested(td, "objc")("typename").toString,
       nested(td, "objc")("header").toString,
+      getOptionalField(td, "objc", "module", ""),
+      getOptionalField(td, "objc", "kmpPackage", ""),
+      getOptionalField(td, "objc", "kmpBridgePrefix", ""),
       nested(td, "objc")("boxed").toString,
       nested(td, "objc")("pointer").asInstanceOf[Boolean],
       getOptionalField(td, "objc", "generic", false),
