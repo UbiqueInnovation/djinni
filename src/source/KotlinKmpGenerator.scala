@@ -71,9 +71,14 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
   private def kmpTypeName(td: TypeDecl): String = kmpBridgePrefix + idJava.ty(canonicalName(td))
   private def kmpObjcName(td: TypeDecl): String = kmpObjcNamePrefix + idJava.ty(canonicalName(td))
+  private def externKmpPackage(e: MExtern): String = e.kmp.pkg
   private def externKmpBridgePrefix(e: MExtern): String =
-    if (e.objc.kmpBridgePrefix.nonEmpty) e.objc.kmpBridgePrefix else kmpBridgePrefix
+    if (e.kmp.bridgePrefix.nonEmpty) e.kmp.bridgePrefix else kmpBridgePrefix
   private def externKmpTypeName(e: MExtern): String = externKmpBridgePrefix(e) + idJava.ty(e.name)
+  private def externKmpFqTypeName(e: MExtern): String = {
+    val typeName = externKmpTypeName(e)
+    if (externKmpPackage(e).nonEmpty) s"${externKmpPackage(e)}.$typeName" else typeName
+  }
 
   private def typeParamDecl(params: Seq[TypeParam]): String = {
     if (params.isEmpty) "" else params.map(p => idJava.typeParam(p.ident.name)).mkString("<", ", ", ">")
@@ -154,8 +159,8 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     def externPackages(tm: MExpr): Set[String] = {
       val nested = tm.args.flatMap(externPackages).toSet
       tm.base match {
-        case e: MExtern if e.objc.kmpPackage.nonEmpty && e.objc.kmpPackage != currentKmpPackage =>
-          nested + e.objc.kmpPackage
+        case e: MExtern if externKmpPackage(e).nonEmpty && externKmpPackage(e) != currentKmpPackage =>
+          nested + externKmpPackage(e)
         case _ => nested
       }
     }
@@ -1001,7 +1006,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             case _ => f(arg) + "?"
           }
         case MArray => "Array<" + kmpType(tm.args.head) + ">"
-        case e: MExtern => externKmpTypeName(e) + (if (e.java.generic) args(tm) else "")
+        case e: MExtern => externKmpFqTypeName(e) + (if (e.java.generic) args(tm) else "")
         case p: MProtobuf => p.name
         case o =>
           val base = o match {
@@ -1015,7 +1020,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             case MMap => "HashMap"
             case MArray => throw new AssertionError("array should have been special cased")
             case d: MDef => kmpBridgePrefix + idJava.ty(d.name)
-            case e: MExtern => externKmpTypeName(e)
+            case e: MExtern => externKmpFqTypeName(e)
             case p: MProtobuf => p.name
             case p: MParam => idJava.typeParam(p.name)
             case MVoid => "Void"

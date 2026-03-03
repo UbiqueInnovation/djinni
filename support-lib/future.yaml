@@ -7,13 +7,14 @@ cpp:
   header: '"$Future.hpp"'
   byValue: true
   moveOnly: true
+kmp:
+  package: 'io.openmobilemaps.mapscore.kmp'
+  bridgePrefix: 'KM'
 objc:
   typename: 'DJFuture'
   header: '"$DJFuture.h"'
   boxed: 'DJFuture'
   module: 'MapCoreSharedModule'
-  kmpPackage: 'io.openmobilemaps.mapscore.kmp'
-  kmpBridgePrefix: 'KM'
   pointer: true
   generic: true
   hash: '%s.hash'

@@ -6,6 +6,9 @@ cpp:
   typename: '::djinni::DataRef'
   header: '"$DataRef.hpp"'
   byValue: false
+kmp:
+  package: 'io.openmobilemaps.mapscore.kmp'
+  bridgePrefix: 'KM'
 objc:
   typename: 'NSData'
   pointer: true
