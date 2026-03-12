@@ -14,7 +14,7 @@ objc:
   typename: 'DJFuture'
   header: '"$DJFuture.h"'
   boxed: 'DJFuture'
-  module: 'MapCoreSharedModule'
+  module: 'OpenMobileMapsKmp'
   pointer: true
   generic: true
   hash: '%s.hash'

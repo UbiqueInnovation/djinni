@@ -11,6 +11,7 @@ objc:
   typename: 'DJOutcome'
   header: '"$DJOutcome.h"'
   boxed: 'DJOutcome'
+  module: 'OpenMobileMapsKmp'
   pointer: true
   generic: true
   hash: '%s.hash'
