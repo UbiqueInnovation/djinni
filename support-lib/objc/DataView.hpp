@@ -17,9 +17,8 @@
 #pragma once
 #ifdef __cplusplus
 
+#include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <memory>
 
 namespace djinni {
 

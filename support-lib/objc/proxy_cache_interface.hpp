@@ -19,10 +19,11 @@
 #pragma once
 #ifdef __cplusplus
 
+#include <cstddef>
 #include <memory>
-#include <functional>
 #include <typeindex>
 #include <unordered_map>
+#include <utility>
 
 namespace djinni {
 

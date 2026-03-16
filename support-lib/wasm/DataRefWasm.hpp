@@ -19,7 +19,12 @@
 #include "../cpp/DataRef.hpp"
 
 #include "djinni_wasm.hpp"
+
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace djinni {
 class DataRefWasm : public DataRef::PlatformRef {

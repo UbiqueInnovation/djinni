@@ -19,6 +19,9 @@
 #include "djinni_wasm.hpp"
 #include "../cpp/DataView.hpp"
 
+#include <cstddef>
+#include <cstdint>
+
 namespace djinni {
 
 struct NativeDataView {
