@@ -18,16 +18,21 @@
 
 #pragma once
 
-#include <cassert>
-#include <exception>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <vector>
-
 #include "../proxy_cache_interface.hpp"
 #include "../djinni_common.hpp"
 #include <jni.h>
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 /*
  * Djinni support library

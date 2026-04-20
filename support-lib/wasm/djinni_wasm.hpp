@@ -23,12 +23,15 @@
 #include <emscripten/threading.h>
 #endif
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <iostream>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <optional>
-#include <stdexcept>
-#include <iostream>
 
 namespace em = emscripten;
 

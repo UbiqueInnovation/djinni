@@ -20,7 +20,14 @@
 #include "DataRef.hpp"
 
 #include <CoreFoundation/CFData.h>
+
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace djinni {
 

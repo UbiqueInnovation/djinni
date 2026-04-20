@@ -2,6 +2,9 @@
 #pragma once
 
 #include "../cpp/DataRef.hpp"
+
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 

@@ -20,6 +20,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <stdexcept>
 #include <variant>
 
 namespace djinni {

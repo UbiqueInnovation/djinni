@@ -20,6 +20,11 @@
 #include "Marshal.hpp"
 #include "../cpp/Future.hpp"
 
+#include <exception>
+#include <memory>
+#include <stdexcept>
+#include <string>
+
 namespace djinni {
 
 struct PromiseJniInfo {

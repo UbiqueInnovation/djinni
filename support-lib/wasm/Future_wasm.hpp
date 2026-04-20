@@ -19,6 +19,10 @@
 #include "djinni_wasm.hpp"
 #include "../cpp/Future.hpp"
 
+#include <exception>
+#include <type_traits>
+#include <utility>
+
 namespace djinni {
 
 template <class RESULT>
