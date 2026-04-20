@@ -19,6 +19,8 @@
 #include "djinni_support.hpp"
 #include "DataRefJNI.hpp"
 
+#include <memory>
+
 namespace djinni {
 
 struct NativeDataRef {

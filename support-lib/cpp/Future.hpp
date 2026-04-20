@@ -18,12 +18,15 @@
 #ifdef __cplusplus
 
 #include <atomic>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <condition_variable>
-#include <mutex>
 #include <cassert>
+#include <condition_variable>
+#include <cstddef>
+#include <exception>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <type_traits>
+#include <utility>
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__) && !defined(NDEBUG)
 #include <pthread.h>

@@ -19,9 +19,13 @@
 #pragma once
 
 #include "proxy_cache_interface.hpp"
-#include <functional>
+
+#include <cstddef>
+#include <memory>
 #include <mutex>
+#include <typeindex>
 #include <unordered_map>
+#include <utility>
 
 // """
 //    This place is not a place of honor.

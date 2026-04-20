@@ -18,12 +18,15 @@
 #ifdef __cplusplus
 
 #include <atomic>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <condition_variable>
-#include <mutex>
 #include <cassert>
+#include <condition_variable>
+#include <cstddef>
+#include <exception>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <type_traits>
+#include <utility>
 
 #ifdef __cpp_coroutines
 #if __has_include(<coroutine>)

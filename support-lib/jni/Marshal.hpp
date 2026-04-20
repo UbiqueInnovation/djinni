@@ -19,10 +19,14 @@
 #pragma once
 
 #include "djinni_support.hpp"
-#include <array>
+
+#include <cstddef>
+#include <cstdint>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
