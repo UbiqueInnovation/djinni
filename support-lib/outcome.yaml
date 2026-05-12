@@ -11,7 +11,7 @@ objc:
   typename: 'DJOutcome'
   header: '"$DJOutcome.h"'
   boxed: 'DJOutcome'
-  module: 'swiftPMImport.io.openmobilemaps.mapscore'
+  module: 'swiftPMImport.io.openmobilemaps.mapscore.kmp'
   pointer: true
   generic: true
   hash: '%s.hash'
