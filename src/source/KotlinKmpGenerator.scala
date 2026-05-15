@@ -198,7 +198,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
       w.wl
       if (isInKmpIosOutFolder(folder)) {
         w.wl("@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)")
-        w.wl("""@file:Suppress("RedundantCast", "RedundantCallOfConversionMethod", "USELESS_CAST")""")
+        w.wl("""@file:Suppress("RedundantCast", "RedundantCallOfConversionMethod", "UNCHECKED_CAST", "USELESS_CAST")""")
         w.wl
       }
       spec.kotlinKmpPackage.foreach(s => w.wl(s"package $s"))
@@ -263,7 +263,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           w.wl
           w.increase()
           for (f <- r.fields) {
-            w.wl(s"${idJava.field(f.ident)}: ${kmpFieldType(f.ty.resolved)},")
+            w.wl(s"${idJava.field(f.ident)}: ${kmpConstructorFieldType(f.ty.resolved)},")
           }
           w.decrease()
           w.w(")")
@@ -290,7 +290,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             w.wl
             w.increase()
             for (f <- r.fields) {
-              w.wl(s"${idJava.field(f.ident)}: ${kmpFieldType(f.ty.resolved)},")
+              w.wl(s"${idJava.field(f.ident)}: ${kmpConstructorFieldType(f.ty.resolved)},")
             }
             w.decrease()
             w.w(")")
@@ -301,7 +301,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           w.increase()
           for (f <- r.fields) {
             val fieldName = idJava.field(f.ident)
-            w.wl(s"actual val $fieldName: ${kmpFieldType(f.ty.resolved)} = $fieldName")
+            w.wl(s"actual val $fieldName: ${kmpFieldType(f.ty.resolved)} = ${kmpConstructorFieldInitializer(f.ty.resolved, fieldName)}")
           }
           w.decrease()
           w.wl("}")
@@ -347,7 +347,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           w.wl
           w.increase()
           for (f <- r.fields) {
-            w.wl(s"${idJava.field(f.ident)}: ${kmpFieldType(f.ty.resolved)},")
+            w.wl(s"${idJava.field(f.ident)}: ${kmpConstructorFieldType(f.ty.resolved)},")
           }
           w.decrease()
           w.w(")")
@@ -358,7 +358,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.increase()
         for (f <- r.fields) {
           val fieldName = idJava.field(f.ident)
-          w.wl(s"actual val $fieldName: ${kmpFieldType(f.ty.resolved)} = $fieldName")
+          w.wl(s"actual val $fieldName: ${kmpFieldType(f.ty.resolved)} = ${kmpConstructorFieldInitializer(f.ty.resolved, fieldName)}")
         }
         w.decrease()
         w.wl("}")
@@ -419,7 +419,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.wl
         w.wl("@OptIn(ExperimentalObjCName::class)")
         w.wl(s"""@ObjCName("$objcName", exact = true)""")
-        w.wl(s"actual enum class $name(val rawValue: Long) {")
+        w.wl(s"actual enum class $name(internal val platformValue: Long) {")
         w.increase()
         val normal = normalEnumOptions(e)
         for ((o, idx) <- normal.zipWithIndex) {
@@ -453,7 +453,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.decrease()
         w.wl("}")
         w.wl
-        w.wl(s"public fun $name.asPlatform(): $actualType = rawValue")
+        w.wl(s"public fun $name.asPlatform(): $actualType = platformValue")
       }, extraImports = iosImports)
     })
   }
@@ -807,6 +807,20 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     if (kotlinMarshal.isEnumFlags(tm)) s"EnumSet<$name>" else name
   }
 
+  private def kmpConstructorFieldType(tm: MExpr): String = {
+    tm.base match {
+      case MList => "List<*>"
+      case _ => kmpFieldType(tm)
+    }
+  }
+
+  private def kmpConstructorFieldInitializer(tm: MExpr, fieldName: String): String = {
+    tm.base match {
+      case MList => s"$fieldName as ${kmpFieldType(tm)}"
+      case _ => fieldName
+    }
+  }
+
   private def needsAndroidRecordWrapper(td: TypeDecl, r: Record): Boolean = {
     val rootName = canonicalName(td)
     r.fields.exists(f => needsAndroidRecordWrapperType(f.ty.resolved, Set(rootName)))
@@ -814,29 +828,16 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
   private def needsAndroidRecordWrapperType(tm: MExpr, seen: Set[String]): Boolean = {
     tm.base match {
-      case MOptional | MList | MSet | MArray =>
+      case MList =>
+        true
+      case MOptional | MSet | MArray =>
         tm.args.exists(arg => needsAndroidRecordWrapperType(arg, seen))
       case MMap =>
         tm.args.exists(arg => needsAndroidRecordWrapperType(arg, seen))
       case _ if meta.isInterface(tm) =>
         true
       case _ if isRecord(tm) =>
-        tm.base match {
-          case d: MDef =>
-            if (seen.contains(d.name)) {
-              false
-            } else {
-              d.body match {
-                case nested: Record =>
-                  nested.fields.exists(f => needsAndroidRecordWrapperType(f.ty.resolved, seen + d.name))
-                case _ => false
-              }
-            }
-          case _: MExtern =>
-            false
-          case _ =>
-            false
-        }
+        true
       case _ =>
         false
     }
@@ -1067,7 +1068,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             case MDate => "Date"
             case MBinary => "ByteArray"
             case MOptional => throw new AssertionError("optional should have been special cased")
-            case MList => "ArrayList"
+            case MList => "List"
             case MSet => "HashSet"
             case MMap => "HashMap"
             case MArray => throw new AssertionError("array should have been special cased")
