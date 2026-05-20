@@ -808,17 +808,11 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   }
 
   private def kmpConstructorFieldType(tm: MExpr): String = {
-    tm.base match {
-      case MList => "List<*>"
-      case _ => kmpFieldType(tm)
-    }
+    kmpFieldType(tm)
   }
 
   private def kmpConstructorFieldInitializer(tm: MExpr, fieldName: String): String = {
-    tm.base match {
-      case MList => s"$fieldName as ${kmpFieldType(tm)}"
-      case _ => fieldName
-    }
+    fieldName
   }
 
   private def needsAndroidRecordWrapper(td: TypeDecl, r: Record): Boolean = {
