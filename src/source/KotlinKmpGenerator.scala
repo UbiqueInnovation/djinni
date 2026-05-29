@@ -243,6 +243,21 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   private def conversionImportsForRecord(r: Record): Seq[String] =
     conversionImportsForTypes(r.fields.map(_.ty.resolved))
 
+  private def hasBinaryType(types: Seq[MExpr]): Boolean = {
+    def check(tm: MExpr): Boolean = tm.base match {
+      case MBinary => true
+      case _ => tm.args.exists(check)
+    }
+    types.exists(check)
+  }
+
+  private val binaryCinteropImports: Seq[String] = Seq(
+    "kotlinx.cinterop.addressOf",
+    "kotlinx.cinterop.usePinned",
+    "platform.Foundation.dataWithBytes",
+    "platform.posix.memcpy"
+  )
+
   private def conversionImportsForInterface(i: Interface): Seq[String] = {
     val methodTypes = i.methods.flatMap { m =>
       m.params.map(_.ty.resolved) ++ m.ret.map(_.resolved).toSeq
@@ -380,7 +395,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         }
         w.decrease()
         w.wl(")")
-      }, extraImports = conversionImports ++ iosImports)
+      }, extraImports = conversionImports ++ iosImports ++ (if (hasBinaryType(r.fields.map(_.ty.resolved))) binaryCinteropImports else Seq.empty))
     })
   }
 
@@ -886,6 +901,8 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         if (!isAndroid && boxedPrimitive) s"platform.Foundation.NSNumber(longLong = $base)" else base
       case p: MPrimitive =>
         if (!isAndroid && boxedPrimitive) objcBox(p, expr) else expr
+      case MBinary if !isAndroid =>
+        s"if ($expr.isEmpty()) platform.Foundation.NSData.dataWithBytes(bytes = null, length = 0u) else $expr.usePinned { pinned -> platform.Foundation.NSData.dataWithBytes(bytes = pinned.addressOf(0), length = $expr.size.toULong()) }"
       case _ => expr
     }
   }
@@ -961,6 +978,8 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         if (!isAndroid && boxedPrimitive) objcUnbox(p, expr) else expr
       case MString =>
         if (!isAndroid && boxedPrimitive) s"($expr as String)" else expr
+      case MBinary if !isAndroid =>
+        s"run { val nsData = ($expr as platform.Foundation.NSData); ByteArray(nsData.length.toInt()).also { result -> result.usePinned { pinned -> platform.posix.memcpy(pinned.addressOf(0), nsData.bytes, nsData.length) } } }"
       case _ => expr
     }
   }
@@ -1004,6 +1023,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
           assert(tm.args.size == 1)
           val arg = tm.args.head
           arg.base match {
+            case p: MPrimitive if !isAndroid => "platform.Foundation.NSNumber?"
             case p: MPrimitive => p.kName + "?"
             case MOptional => throw new AssertionError("nested optional?")
             case _ => f(arg) + "?"
@@ -1022,7 +1042,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             case p: MPrimitive => p.kName
             case MString => "String"
             case MDate => "Date"
-            case MBinary => "ByteArray"
+            case MBinary => if (isAndroid) "ByteArray" else "platform.Foundation.NSData"
             case MOptional => throw new AssertionError("optional should have been special cased")
             case MList => "ArrayList"
             case MSet => "HashSet"
