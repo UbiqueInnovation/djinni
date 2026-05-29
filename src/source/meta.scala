@@ -33,7 +33,20 @@ abstract sealed class Meta
 
 case class MParam(name: String) extends Meta { val numParams = 0 }
 case class MDef(name: String, override val numParams: Int, defType: DefType, body: TypeDef) extends Meta
-case class MExtern(name: String, override val numParams: Int, defType: DefType, body: TypeDef, cpp: MExtern.Cpp, objc: MExtern.Objc, objcpp: MExtern.Objcpp, java: MExtern.Java, jni: MExtern.Jni, wasm: MExtern.Wasm, ts: MExtern.Ts) extends Meta
+case class MExtern(
+  name: String,
+  override val numParams: Int,
+  defType: DefType,
+  body: TypeDef,
+  cpp: MExtern.Cpp,
+  objc: MExtern.Objc,
+  objcpp: MExtern.Objcpp,
+  java: MExtern.Java,
+  jni: MExtern.Jni,
+  wasm: MExtern.Wasm,
+  ts: MExtern.Ts,
+  kmp: MExtern.Kmp
+) extends Meta
 object MExtern {
   // These hold the information marshals need to interface with existing types correctly
   // All include paths are complete including quotation marks "a/b/c" or angle brackets <a/b/c>.
@@ -48,11 +61,16 @@ object MExtern {
   case class Objc(
     typename: String,
     header: String,
+    module: String,
     boxed: String, // Fully qualified Objective-C typename, must be an object. Only used for "record" types.
     pointer: Boolean, // True to construct pointer types and make it eligible for "nonnull" qualifier. Only used for "record" types.
     generic: Boolean, // Set to false to exclude type arguments from the ObjC class. This is should be true by default. Useful if template arguments are only used in C++.
     hash: String, // A well-formed expression to get the hash value. Must be a format string with a single "%s" placeholder. Only used for "record" types with "eq" deriving when needed.
     protocol: Boolean
+  )
+  case class Kmp(
+    pkg: String,
+    bridgePrefix: String
   )
   case class Objcpp(
     translator: String, // C++ typename containing toCpp/fromCpp methods

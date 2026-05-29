@@ -15,7 +15,12 @@ let package = Package(
         .target(
             name: "DjinniSupport",
             path: "support-lib/objc",
-            publicHeadersPath: ""
+            publicHeadersPath: "",
+            linkerSettings: [
+                .linkedFramework("Foundation"),
+                .linkedFramework("CoreFoundation"),
+                .linkedLibrary("objc"),
+            ]
         )
     ],
     cxxLanguageStandard: .cxx17

@@ -67,6 +67,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
   private def write(w: IndentWriter, td: TypeDecl) {
     write(w, preamble(td))
     w.wl("cpp:").nested { write(w, cpp(td)) }
+    w.wl("kmp:").nested { write(w, kmp(td)) }
     w.wl("objc:").nested { write(w, objc(td)) }
     w.wl("objcpp:").nested { write(w, objcpp(td)) }
     w.wl("java:").nested { write(w, java(td)) }
@@ -143,9 +144,11 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
   )
 
   private def objc(td: TypeDecl) = {
+    val objcModule = spec.kotlinKmpIosModule.getOrElse(spec.moduleName)
     val map = Map[String, Any](
       "typename" -> QuotedString(objcMarshal.fqTypename(td.ident, td.body)),
       "header" -> QuotedString(objcMarshal.include(td.ident)),
+      "module" -> QuotedString(objcModule),
       "boxed" -> QuotedString(objcMarshal.boxedTypename(td)),
       "pointer" -> objcMarshal.isPointer(td),
       // "generic" -> false,
@@ -159,6 +162,11 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
       case _ => map
     }
   }
+
+  private def kmp(td: TypeDecl) = Map[String, Any](
+    "package" -> QuotedString(spec.kotlinKmpPackage.getOrElse("")),
+    "bridgePrefix" -> QuotedString(spec.kotlinKmpBridgePrefix.getOrElse(""))
+  )
 
   private def objcpp(td: TypeDecl) = Map[String, Any](
     "translator" -> QuotedString(objcppMarshal.helperName(mexpr(td))),
@@ -250,6 +258,7 @@ object YamlGenerator {
     MExtern.Objc(
       nested(td, "objc")("typename").toString,
       nested(td, "objc")("header").toString,
+      getOptionalField(td, "objc", "module", ""),
       nested(td, "objc")("boxed").toString,
       nested(td, "objc")("pointer").asInstanceOf[Boolean],
       getOptionalField(td, "objc", "generic", false),
@@ -278,7 +287,10 @@ object YamlGenerator {
     MExtern.Ts(
       getOptionalField(td, "ts", "typename"),
       getOptionalField(td, "ts", "module"),
-      getOptionalField(td, "ts", "generic", false))
+      getOptionalField(td, "ts", "generic", false)),
+    MExtern.Kmp(
+      nested(td, "kmp")("package").toString,
+      nested(td, "kmp")("bridgePrefix").toString)
   )
 
   private def nested(td: ExternTypeDecl, key: String) = {

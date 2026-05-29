@@ -46,6 +46,13 @@ package object generatorTools {
                    kotlinRecordsMoshiJsonClass: Boolean,
 				   kotlinRecordsPrimitiveDefaults: Boolean,
                    kotlinOutFolder: Option[File],
+                   kotlinKmpCommonOutFolder: Option[File],
+                   kotlinKmpAndroidOutFolder: Option[File],
+                   kotlinKmpIosOutFolder: Option[File],
+                   kotlinKmpPackage: Option[String],
+                   kotlinKmpIosModule: Option[String],
+                   kotlinKmpBridgePrefix: Option[String],
+                   kotlinKmpObjcNamePrefix: Option[String],
                    javaGenInterface: Boolean,
                    cppOutFolder: Option[File],
                    cppHeaderOutFolder: Option[File],
@@ -277,6 +284,17 @@ package object generatorTools {
           createFolder("Kotlin", spec.kotlinOutFolder.get)
         }
         new KotlinGenerator(spec).generate(idl)
+      }
+      val hasKotlinKmp = spec.kotlinKmpCommonOutFolder.isDefined ||
+        spec.kotlinKmpAndroidOutFolder.isDefined ||
+        spec.kotlinKmpIosOutFolder.isDefined
+      if (hasKotlinKmp) {
+        if (!spec.skipGeneration) {
+          spec.kotlinKmpCommonOutFolder.foreach(createFolder("Kotlin KMP common", _))
+          spec.kotlinKmpAndroidOutFolder.foreach(createFolder("Kotlin KMP android", _))
+          spec.kotlinKmpIosOutFolder.foreach(createFolder("Kotlin KMP ios", _))
+        }
+        new KotlinKmpGenerator(spec).generate(idl)
       }
       if (spec.jniOutFolder.isDefined) {
         if (!spec.skipGeneration) {

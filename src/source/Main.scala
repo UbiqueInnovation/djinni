@@ -54,6 +54,13 @@ object Main {
     var kotlinRecordsMoshiJsonClass: Boolean = false
     var kotlinRecordsPrimitiveDefaults: Boolean = false
     var kotlinOutFolder: Option[File] = None
+    var kotlinKmpCommonOutFolder: Option[File] = None
+    var kotlinKmpAndroidOutFolder: Option[File] = None
+    var kotlinKmpIosOutFolder: Option[File] = None
+    var kotlinKmpPackage: Option[String] = None
+    var kotlinKmpIosModule: Option[String] = None
+    var kotlinKmpBridgePrefix: Option[String] = None
+    var kotlinKmpObjcNamePrefix: Option[String] = None
     var javaGenInterface: Boolean = false
     var jniOutFolder: Option[File] = None
     var jniHeaderOutFolderOptional: Option[File] = None
@@ -164,6 +171,20 @@ object Main {
       note("")
       opt[File]("kotlin-out").valueName("<out-folder>").foreach(x => kotlinOutFolder = Some(x))
         .text("The output for the Kotlin files (Generator disabled if unspecified).")
+      opt[File]("kotlin-kmp-common-out").valueName("<out-folder>").foreach(x => kotlinKmpCommonOutFolder = Some(x))
+        .text("The output for Kotlin KMP commonMain files (Generator disabled if unspecified).")
+      opt[File]("kotlin-kmp-android-out").valueName("<out-folder>").foreach(x => kotlinKmpAndroidOutFolder = Some(x))
+        .text("The output for Kotlin KMP androidMain files (Generator disabled if unspecified).")
+      opt[File]("kotlin-kmp-ios-out").valueName("<out-folder>").foreach(x => kotlinKmpIosOutFolder = Some(x))
+        .text("The output for Kotlin KMP iosMain files (Generator disabled if unspecified).")
+      opt[String]("kotlin-kmp-package").valueName("<package>").foreach(x => kotlinKmpPackage = Some(x))
+        .text("The package name to use for Kotlin KMP files.")
+      opt[String]("kotlin-kmp-ios-module").valueName("<module>").foreach(x => kotlinKmpIosModule = Some(x))
+        .text("The Kotlin/Native module name for Objective-C/Swift interop (used in iosMain typealiases).")
+      opt[String]("kotlin-kmp-bridge-prefix").valueName("<prefix>").foreach(x => kotlinKmpBridgePrefix = Some(x))
+        .text("The prefix to apply to generated Kotlin KMP bridge types (expect/actual).")
+      opt[String]("kotlin-kmp-objc-name-prefix").valueName("<prefix>").foreach(x => kotlinKmpObjcNamePrefix = Some(x))
+        .text("The prefix to apply to @ObjCName annotations for Kotlin KMP bridge types.")
       note("")
       opt[Boolean]("java-gen-interface").valueName("<true/false>").foreach(x => javaGenInterface = x)
         .text("Generate Java interface instead of abstract class.")
@@ -419,6 +440,13 @@ object Main {
       kotlinRecordsMoshiJsonClass,
 	  kotlinRecordsPrimitiveDefaults,
       kotlinOutFolder,
+      kotlinKmpCommonOutFolder,
+      kotlinKmpAndroidOutFolder,
+      kotlinKmpIosOutFolder,
+      kotlinKmpPackage,
+      kotlinKmpIosModule,
+      kotlinKmpBridgePrefix,
+      kotlinKmpObjcNamePrefix,
       javaGenInterface,
       cppOutFolder,
       cppHeaderOutFolder,
