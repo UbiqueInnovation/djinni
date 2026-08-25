@@ -535,7 +535,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                   case _ => w.wl("")
                 }
                 case e: MExtern => e.defType match {
-                  case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSObject ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
+                  case DRecord => w.wl(s"-(void)set${idObjc.field(f.ident).capitalize}:(id)value\n{\n\t _${idObjc.field(f.ident)} = [NSArray ${methodPrefix}arrayOfClass:[${marshal.fqFieldType(f.ty.resolved.args.head.args.head).dropRight(1)}class] withArray:value];\n}")
                   case DEnum => w.wl("")
                   case _ => w.wl("")
                 }
