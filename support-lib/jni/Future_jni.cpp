@@ -24,14 +24,14 @@ static void NativeFutureHandler_nativeHandleResult(JNIEnv* jniEnv, jclass /*unus
     func(jniEnv, nativePromise, jres, jex);
 }
 
-static const JNINativeMethod kNativeMethods[] = {{
+static const JNINativeMethod kNativeFutureHandlerMethods[] = {{
     const_cast<char*>("nativeHandleResult"),
     const_cast<char*>("(JJLjava/lang/Object;Ljava/lang/Throwable;)V"),
     reinterpret_cast<void*>(&NativeFutureHandler_nativeHandleResult),
 }};
 
 // NOLINTNEXTLINE
-static auto sRegisterMethods =
-    JNIMethodLoadAutoRegister("com/snapchat/djinni/NativeFutureHandler", kNativeMethods);
+static auto sNativeFutureHandlerRegisterMethods =
+    JNIMethodLoadAutoRegister("com/snapchat/djinni/NativeFutureHandler", kNativeFutureHandlerMethods);
 
 } // namespace djinni
