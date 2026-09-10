@@ -113,6 +113,7 @@ package object generatorTools {
                    tsOutFolder: Option[File],
                    tsModule: String,
                    tsImportPrefix: String,
+                   swiftNonThrowing: Boolean,
                    swiftOutFolder: Option[File],
                    swiftIdentStyle: SwiftIdentStyle,
                    swiftModule: String,

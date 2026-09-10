@@ -21,19 +21,15 @@ public enum DataViewMarshaller: Marshaller {
 // The C++ side implementation of DataRef uses CFData which is toll-free bridged
 // to NSData.
 public enum DataRefMarshaller: Marshaller {
-    public typealias SwiftType = NSData
+    public typealias SwiftType = Data
     public static func fromCpp(_ v: djinni.swift.AnyValue) -> SwiftType {
         let range = djinni.swift.getBinaryRange(v)
         let cfdata = Unmanaged<CFData>.fromOpaque(range.bytes!).takeRetainedValue()
-        return cfdata as NSData
+        return cfdata as Data
     }
     public static func toCpp(_ s: SwiftType) -> djinni.swift.AnyValue {
-        if let nsMutableData = s as? NSMutableData {
-            let cfDataRef = Unmanaged.passRetained(nsMutableData).toOpaque()
-            return djinni.swift.makeRangeValue(cfDataRef, 1)
-        } else {
-            let cfDataRef = Unmanaged.passRetained(s as CFData).toOpaque()
-            return djinni.swift.makeRangeValue(cfDataRef, 0)
-        }
+        // The C++ adaptor consumes this reference; a temporary Data bridge stays alive until then.
+        let retained = Unmanaged.passRetained(s as NSData).toOpaque()
+        return djinni.swift.makeRangeValue(retained, 0)
     }
 }

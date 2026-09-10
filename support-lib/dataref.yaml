@@ -37,7 +37,7 @@ ts:
   typename: 'Uint8Array'
   module: ''
 swift:
-  typename: 'NSData'
+  typename: 'Data'
   module: 'Foundation'
   generic: false
   translator: 'DataRefMarshaller'

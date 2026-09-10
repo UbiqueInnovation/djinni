@@ -31,6 +31,8 @@ import scala.collection.mutable
 class SwiftGenerator(spec: Spec) extends Generator(spec) {
 
   val marshal = new SwiftMarshal(spec)
+  private val throwsClause = if (spec.swiftNonThrowing) "" else " throws"
+  private val checkErrors = if (spec.swiftNonThrowing) "try! handleCppErrors(&ret)" else "try handleCppErrors(&ret)"
 
   def writeSwiftFile(ident: String, origin: String, refs: Iterable[String], f: IndentWriter => Unit) {
     createFile(spec.swiftOutFolder.get, idSwift.ty(ident) + ".swift", (w: IndentWriter) => {
@@ -252,7 +254,7 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
           // skip label for the first parameter
           if (m.params.nonEmpty) { w.w("_ ") }
           w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${marshal.fqParamType(p.ty)}").mkString(", "))
-          w.wl(s") throws -> ${marshal.fqReturnType(m.ret)}")
+          w.wl(s")${throwsClause} -> ${marshal.fqReturnType(m.ret)}")
         }
       }
     })
@@ -261,19 +263,19 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
       // Define CppProxy class if interface is implemented in C++
       if (i.ext.cpp) {
         w.w(s"final class ${marshal.typename(ident, i)}CppProxy: DjinniSupport.CppProxy, ${marshal.fqTypename(ident, i)}").braced {
-          w.wl("init(_ inst: djinni.swift.AnyValue) { super.init(inst:inst) } ")
+          w.wl("init(_ inst: djinni.swift.AnyValue) { super.init(inst:inst) }")
           for (m <- i.methods.filter(!_.static)) {
             w.w(s"func ${swiftMethodName(m.ident)}(")
             if (m.params.nonEmpty) { w.w("_ ") }
             w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${marshal.fqParamType(p.ty)}").mkString(", "))
-            w.w(s") throws -> ${marshal.fqReturnType(m.ret)}").braced {
+            w.w(s")${throwsClause} -> ${marshal.fqReturnType(m.ret)}").braced {
               w.wl("var _params = djinni.swift.ParameterList()")
               w.wl("_params.addValue(inst)")
               for (p <- m.params) {
                 w.wl(s"_params.addValue(${marshal.toCpp(p.ty, idSwift.local(p.ident))})")
               }
               w.wl(s"var ret = ${spec.swiftxxNamespace}.${marshal.typename(ident, i)}_${idSwift.method(m.ident)}(&_params)")
-              w.wl("try handleCppErrors(&ret)")
+              w.wl(checkErrors)
               if (!m.ret.isEmpty) {
                 w.wl(s"return ${marshal.fromCpp(m.ret.get, "ret")}")
               }
@@ -329,13 +331,13 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
             w.w(s"public static func ${swiftMethodName(m.ident)}(")
             if (m.params.nonEmpty) { w.w("_ ") }
             w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${marshal.fqParamType(p.ty)}").mkString(", "))
-            w.w(s") throws -> ${marshal.fqReturnType(m.ret)}").braced {
+            w.w(s")${throwsClause} -> ${marshal.fqReturnType(m.ret)}").braced {
               w.wl("var _params = djinni.swift.ParameterList()")
               for (p <- m.params) {
                 w.wl(s"_params.addValue(${marshal.toCpp(p.ty, idSwift.local(p.ident))})")
               }
               w.wl(s"var ret = ${spec.swiftxxNamespace}.${marshal.typename(ident, i)}_${idSwift.method(m.ident)}(&_params)")
-              w.wl("try handleCppErrors(&ret)")
+              w.wl(checkErrors)
               if (!m.ret.isEmpty) {
                 w.wl(s"return ${marshal.fromCpp(m.ret.get, "ret")}")
               }

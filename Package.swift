@@ -1,27 +1,17 @@
 // swift-tools-version:6.1
-// The swift-tools-version declares the minimum version of Swift required to build this package.
-
 import PackageDescription
-
 let package = Package(
     name: "DjinniSupport",
+    platforms: [.iOS(.v14), .macOS(.v12)],
     products: [
-        .library(
-            name: "DjinniSupport",
-            targets: ["DjinniSupport"]
-        )
+        .library(name: "DjinniSupport", targets: ["DjinniSupport"]),
+        .library(name: "DjinniSupportCpp", targets: ["DjinniSupportCpp"]),
+        .library(name: "DjinniSupportCxx", targets: ["DjinniSupportCxx"]),
     ],
     targets: [
-        .target(
-            name: "DjinniSupport",
-            path: "support-lib/objc",
-            publicHeadersPath: "",
-            linkerSettings: [
-                .linkedFramework("Foundation"),
-                .linkedFramework("CoreFoundation"),
-                .linkedLibrary("objc"),
-            ]
-        )
+        .target(name: "DjinniSupportCpp", path: "support-lib/cpp", publicHeadersPath: "."),
+        .target(name: "DjinniSupportCxx", dependencies: ["DjinniSupportCpp"], path: "support-lib/swiftxx", publicHeadersPath: ".", linkerSettings: [.linkedFramework("CoreFoundation")]),
+        .target(name: "DjinniSupport", dependencies: ["DjinniSupportCxx"], path: "support-lib/swift", exclude: ["DJProtobuf.swift"], swiftSettings: [.interoperabilityMode(.Cxx), .swiftLanguageMode(.v5)]),
     ],
     cxxLanguageStandard: .cxx17
 )

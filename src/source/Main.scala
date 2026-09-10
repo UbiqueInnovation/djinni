@@ -113,6 +113,7 @@ object Main {
     var tsImportPrefix: String = "./"
     var swiftOutFolder: Option[File] = None
     var swiftModule: String = "Module"
+    var swiftNonThrowing = false
     var swiftIdentStyle = IdentStyle.swiftDefault
     var swiftxxOutFolder: Option[File] = None
     var swiftxxNamespace: String = "djinni_generated"
@@ -310,6 +311,10 @@ object Main {
       opt[String]("ts-import-prefix").valueName("<prefix>").foreach(tsImportPrefix = _)
         .text("The prefix to be prepended to ts-module when this file is imported into other TypeScript interface files (default: \"./\").")
       note("")
+      opt[Boolean]("swift-non-throwing").foreach(swiftNonThrowing = _)
+        .text("Trap translated native exceptions instead of exposing throwing Swift methods (matches legacy ObjC clients).")
+      identStyle("ident-swift-enum", c => { swiftIdentStyle = swiftIdentStyle.copy(enum = c) })
+      identStyle("ident-swift-type", c => { swiftIdentStyle = swiftIdentStyle.copy(ty = c) })
       opt[File]("swift-out").valueName("<out-folder>").foreach(x => swiftOutFolder = Some(x))
         .text("The output folder for Swift files (Generator disabled if unspecified).")
       opt[String]("swift-module").valueName("<name>").foreach(swiftModule = _)
@@ -536,6 +541,7 @@ object Main {
       tsOutFolder,
       tsModule,
       tsImportPrefix,
+      swiftNonThrowing,
       swiftOutFolder,
       swiftIdentStyle,
       swiftModule,
