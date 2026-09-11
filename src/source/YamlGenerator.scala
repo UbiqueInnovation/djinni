@@ -289,8 +289,8 @@ object YamlGenerator {
       getOptionalField(td, "ts", "module"),
       getOptionalField(td, "ts", "generic", false)),
     MExtern.Kmp(
-      nested(td, "kmp")("package").toString,
-      nested(td, "kmp")("bridgePrefix").toString)
+      getOptionalField(td, "kmp", "package", ""),
+      getOptionalField(td, "kmp", "bridgePrefix", ""))
   )
 
   private def nested(td: ExternTypeDecl, key: String) = {
