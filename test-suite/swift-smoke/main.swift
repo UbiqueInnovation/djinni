@@ -8,6 +8,10 @@ for value in [Payload(items: [Coordinate(x: 1.25, y: -2)], note: "round trip"), 
     let decoded = try JSONDecoder().decode(Payload.self, from: encoded)
     precondition(decoded == value)
 }
+let emptyJSON = try JSONEncoder().encode(EmptyValue())
+precondition(String(decoding: emptyJSON, as: UTF8.self) == "{}")
+let emptyDecoded = try JSONDecoder().decode(EmptyValue.self, from: emptyJSON)
+precondition(emptyDecoded == EmptyValue())
 print("Parcelable records round-trip through Swift Codable")
 
 // Checked conformances must be visible to clients of the generated module.
@@ -28,6 +32,7 @@ let counter = try CounterInterface.create(initialValue: 37)
 let counterValue = try counter.value
 precondition(counterValue == 37)
 let engine = try Engine.create()
+try runNativeValueChecks(engine)
 let defaultValue = try engine.default
 precondition(defaultValue == 42)
 try engine.setCount(9)

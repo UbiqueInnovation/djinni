@@ -21,6 +21,15 @@ import djinni.generatorTools._
 import djinni.meta._
 
 class SwiftMarshal(spec: Spec) extends Marshal(spec) {
+  def isDirectRecord(tm: MExpr): Boolean = tm.args.isEmpty && (tm.base match {
+    case d: MDef => d.body match { case r: Record => !r.ext.cpp; case _ => false }
+    case e: MExtern => e.swift.directRecord
+    case _ => false
+  })
+  def nativeField(name: String): String = "__djinni_" + idCpp.field(name)
+  def needsRecordProperty(field: Field): Boolean =
+    idCpp.field(field.ident) != idSwift.field(field.ident) ||
+      !(field.ty.resolved.base.isInstanceOf[MPrimitive] || isDirectRecord(field.ty.resolved))
   private val swiftKeywords = Set("case", "default", "repeat", "switch", "class", "struct", "enum", "protocol", "extension", "func", "var", "let", "init", "deinit", "return", "throw", "throws", "try", "catch", "do", "if", "else", "for", "while", "in", "is", "as", "self", "super", "nil", "true", "false", "static", "private", "public", "internal", "fileprivate", "import", "associatedtype", "typealias", "where", "break", "continue", "defer", "fallthrough", "guard", "inout", "operator", "rethrows", "subscript")
   def escapeSwiftIdent(value: String): String = if (swiftKeywords.contains(value)) s"`$value`" else value
   def swiftMethodName(ident: String) = {

@@ -27,6 +27,10 @@ with tempfile.TemporaryDirectory(prefix="djinni-swift-smoke-") as directory:
         "--kotlin-kmp-package", "smoke", "--kotlin-kmp-ios-module", "SmokeObjc",
     ], check=True)
     assert "record deriving(sendable)" in (tmp / "yaml/sendable_value.yaml").read_text()
+    assert "public typealias Coordinate = SmokeCxx.Coordinate" in (tmp / "swift/Coordinate.swift").read_text()
+    assert "public typealias Payload = SmokeCxx.Payload" in (tmp / "swift/Payload.swift").read_text()
+    assert "directRecord: true" in (tmp / "yaml/coordinate.yaml").read_text()
+    assert "CoordinateMarshaller.toNative" not in (tmp / "swift/Engine.swift").read_text()
     (tmp / "consumer.djinni").write_text('@extern "yaml/sendable_value.yaml"\nconsumer = record { value: sendable_value; }\n')
     subprocess.run([str(root / "src/run-assume-built"), "--idl", str(tmp / "consumer.djinni"),
                     "--cpp-out", str(tmp / "consumer-native")], check=True)

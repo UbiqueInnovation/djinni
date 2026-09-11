@@ -64,3 +64,5 @@ engine = interface +c {
 counter_interface = interface +c { static create(initial_value: i32): counter_interface; get_value(): i32; }
 
 sendable_value = record { value: i32; } deriving(sendable)
+
+empty_value = record {} deriving(eq, codable)

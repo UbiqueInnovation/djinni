@@ -220,7 +220,8 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
     "module" -> QuotedString(spec.swiftModule),
     "translator" -> QuotedString(swiftMarshal.helperName(mexpr(td))),
     "translator.module" -> QuotedString(spec.swiftModule),
-    "native" -> swiftxxMarshal.isNative(mexpr(td))
+    "native" -> swiftxxMarshal.isNative(mexpr(td)),
+    "directRecord" -> swiftMarshal.isDirectRecord(mexpr(td))
   )
   private def swiftxx(td: TypeDecl) = Map[String, Any](
     "translator" -> QuotedString(swiftxxMarshal.helperName(mexpr(td))),
@@ -321,7 +322,8 @@ object YamlGenerator {
       getOptionalField(td, "swift", "translator"),
       getOptionalField(td, "swift", "translator.module", ""),
       getOptionalField(td, "swift", "generic", false),
-      getOptionalField(td, "swift", "native", false)),
+      getOptionalField(td, "swift", "native", false),
+      getOptionalField(td, "swift", "directRecord", false)),
     MExtern.Swiftxx(
       getOptionalField(td, "swiftxx", "translator"),
       getOptionalField(td, "swiftxx", "header"))

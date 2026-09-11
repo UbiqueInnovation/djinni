@@ -98,6 +98,7 @@ class SwiftxxGenerator(spec: Spec) extends Generator(spec) {
           w.wl(s"static CppType makeNative($args);")
           for ((f, index) <- r.fields.zipWithIndex if !marshal.isNative(f.ty.resolved)) {
             w.wl(s"static djinni::swift::AnyValue getField$index(const CppType& value);")
+            w.wl(s"static void setField$index(CppType& value, const djinni::swift::AnyValue& field);")
           }
         }
         w.wl(s"static djinni::swift::AnyValue fromCpp(const CppType& c);")
@@ -114,6 +115,9 @@ class SwiftxxGenerator(spec: Spec) extends Generator(spec) {
         for ((f, index) <- r.fields.zipWithIndex if !marshal.isNative(f.ty.resolved)) {
           w.w(s"djinni::swift::AnyValue $helper::getField$index(const CppType& value)").braced {
             w.wl(s"return ${marshal.fromCpp(f.ty, "value." + idCpp.field(f.ident))};")
+          }
+          w.w(s"void $helper::setField$index(CppType& value, const djinni::swift::AnyValue& field)").braced {
+            w.wl(s"value.${idCpp.field(f.ident)} = ${marshal.toCpp(f.ty, "field")};")
           }
         }
       }

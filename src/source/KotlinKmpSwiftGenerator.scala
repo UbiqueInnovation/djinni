@@ -152,7 +152,7 @@ class KotlinKmpSwiftGenerator(spec: Spec) extends Generator(spec) {
       for (toKotlin <- Seq(true, false)) {
         val source = if (toKotlin) swift.fqTypename(ident.name, r) else kotlinName(ident.name)
         val target = if (toKotlin) kotlinName(ident.name) else swift.fqTypename(ident.name, r)
-        w.w(s"public static func ${if (toKotlin) "toKotlin" else "toSwift"}(_ value: $source) -> $target").braced {
+        w.w(s"public static func ${if (toKotlin) "toKotlin" else "toSwift"}(_ value: ${if (toKotlin && !r.ext.cpp) "borrowing " else ""}$source) -> $target").braced {
           val fields = r.fields.map { f =>
             val input = if (toKotlin) idSwift.field(f.ident) else escape(idJava.field(f.ident))
             val label = if (toKotlin) escape(idJava.field(f.ident)) else idSwift.field(f.ident)

@@ -45,12 +45,12 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
   private def methodEffects(m: Interface.Method): String = if (futureValue(m).nonEmpty) " async throws" else throwsClause
   private def methodReturn(m: Interface.Method): String = futureValue(m).map(marshal.fqTypename).getOrElse(marshal.fqReturnType(m.ret))
 
-  private def toNative(tm: MExpr, expr: String): String = if (!nativeMarshal.isNative(tm)) marshal.toCpp(tm, expr) else tm.base match {
+  private def toNative(tm: MExpr, expr: String): String = if (marshal.isDirectRecord(tm)) expr else if (!nativeMarshal.isNative(tm)) marshal.toCpp(tm, expr) else tm.base match {
     case _: MPrimitive => expr
     case MString => s"std.string($expr)"
     case _ => s"${marshal.helperName(tm)}.toNative($expr)"
   }
-  private def fromNative(tm: MExpr, expr: String): String = if (!nativeMarshal.isNative(tm)) marshal.fromCpp(tm, expr) else tm.base match {
+  private def fromNative(tm: MExpr, expr: String): String = if (marshal.isDirectRecord(tm)) expr else if (!nativeMarshal.isNative(tm)) marshal.fromCpp(tm, expr) else tm.base match {
     case _: MPrimitive => expr
     case MString => s"String($expr)"
     case _ => s"${marshal.helperName(tm)}.fromNative($expr)"
@@ -122,9 +122,11 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
     }
   }
 
-  private def writeNativeCall(w: IndentWriter, ident: Ident, m: Interface.Method, receiver: String = "inst"): Unit = {
+  private def nativeOverloadArgument(tm: MExpr): Boolean = nativeMarshal.isNativeContainer(tm) && tm.base != MOptional
+
+  private def writeNativeCall(w: IndentWriter, ident: Ident, m: Interface.Method, receiver: String = "inst", directContainers: Boolean = false): Unit = {
     if (futureValue(m).nonEmpty) w.wl("try Task.checkCancellation()")
-    val args = (if (m.static) Seq.empty else Seq(receiver)) ++ m.params.zipWithIndex.map { case (p, index) => containerToNative(p.ty.resolved, idSwift.local(p.ident), nativeMarshal.methodContainerName(ident, m, s"Arg$index"), marshal.helperClass(ident) + ".") }
+    val args = (if (m.static) Seq.empty else Seq(receiver)) ++ m.params.zipWithIndex.map { case (p, index) => if (directContainers && nativeOverloadArgument(p.ty.resolved)) idSwift.local(p.ident) else containerToNative(p.ty.resolved, idSwift.local(p.ident), nativeMarshal.methodContainerName(ident, m, s"Arg$index"), marshal.helperClass(ident) + ".") }
     val binding = if (m.ret.nonEmpty) "var" else "let"
     w.wl(s"$binding result = ${spec.swiftxxNamespace}.${idSwift.ty(ident)}_${idSwift.method(m.ident)}Native(${args.mkString(", ")})")
     w.w("if result.hasError()").braced {
@@ -136,9 +138,25 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
       if (nativeMarshal.nativeFutureValue(t.resolved).nonEmpty) {
         w.wl(s"return try await ${marshal.helperClass(ident)}.from${name}Future(result.takeValue())")
       } else {
-        val result = containerFromNative(t.resolved, "result.takeValue()", name, marshal.helperClass(ident) + ".")
+        val result = if (directContainers && nativeMarshal.isNativeContainer(t.resolved)) "result.takeValue()" else containerFromNative(t.resolved, "result.takeValue()", name, marshal.helperClass(ident) + ".")
         w.wl(if (futureValue(m).nonEmpty) s"return try await $result.value" else s"return $result")
       }
+    }
+  }
+
+  private def writeNativeContainerOverload(w: IndentWriter, ident: Ident, m: Interface.Method, receiver: String): Unit = {
+    if (futureValue(m).nonEmpty || !m.params.exists(p => nativeOverloadArgument(p.ty.resolved))) return
+    def nativeType(position: String) = spec.swiftModule + "Cxx." + spec.swiftxxNamespace + "." + nativeMarshal.methodContainerName(ident, m, position)
+    val args = m.params.zipWithIndex.map { case (p, index) =>
+      val native = nativeOverloadArgument(p.ty.resolved)
+      val borrowed = native || marshal.isDirectRecord(p.ty.resolved)
+      s"${idSwift.local(p.ident)}: ${if (borrowed) "borrowing " else ""}${if (native) nativeType(s"Arg$index") else marshal.fqParamType(p.ty)}"
+    }.mkString(", ")
+    val returns = m.ret.filter(t => nativeMarshal.isNativeContainer(t.resolved)).map(_ => nativeType("Return")).getOrElse(methodReturn(m))
+    val firstLabel = if (m.static && marshal.isFactory(ident.name, m)) "" else "_ "
+    w.wl("// Native containers stay in C++ storage; the Swift collection overload is a convenience.")
+    w.w(s"public ${if (m.static) "static " else ""}func ${swiftMethodName(m.ident)}($firstLabel$args)$throwsClause -> $returns").braced {
+      writeNativeCall(w, ident, m, receiver, directContainers = true)
     }
   }
 
@@ -299,7 +317,111 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
     if (conformance.nonEmpty) prefix + conformance.mkString(", ") else ""
   }
 
+  private def generateDirectRecord(origin: String, ident: Ident, doc: Doc, r: Record): Unit = {
+    val refs = new SwiftRefs(ident.name)
+    r.fields.foreach(f => refs.find(f.ty))
+    val name = marshal.typename(ident, r)
+    val native = spec.swiftModule + "Cxx." + cppMarshal.fqTypename(ident, r).stripPrefix("::").replace("::", ".")
+    val helper = spec.swiftxxNamespace + "." + spec.swiftxxClassIdentStyle(ident)
+    val marshaller = marshal.helperClass(ident)
+    val containers = r.fields.zipWithIndex.flatMap { case (f, index) => nativeMarshal.nativeContainers(f.ty.resolved, s"NativeField$index") }
+    def fieldTo(f: Field, index: Int, expr: String) = containerToNative(f.ty.resolved, expr, s"NativeField$index", marshaller + ".")
+    def fieldFrom(f: Field, index: Int, expr: String) = containerFromNative(f.ty.resolved, expr, s"NativeField$index", marshaller + ".")
+    val deriving = r.derivingTypes
+    def valueSendable(tm: MExpr): Boolean = tm.base match {
+      case _: MPrimitive | MString | MDate | MBinary => true
+      case MList | MArray | MSet | MMap | MOptional => tm.args.forall(valueSendable)
+      case d: MDef => d.body match {
+        case _: Enum => true
+        case record: Record => !record.ext.cpp && record.derivingTypes.contains(DerivingType.Sendable)
+        case _ => false
+      }
+      case e: MExtern => e.body match {
+        case _: Enum => true
+        case record: Record => !record.ext.cpp && record.derivingTypes.contains(DerivingType.Sendable)
+        case _ => false
+      }
+      case _ => false
+    }
+    if (deriving.contains(DerivingType.Sendable))
+      require(r.fields.forall(f => valueSendable(f.ty.resolved)), s"Sendable native record $name requires value-only Sendable fields")
+    val equatable = deriving.contains(DerivingType.Eq) || deriving.contains(DerivingType.Hashable) || deriving.contains(DerivingType.Ord)
+    val codable = deriving.contains(DerivingType.Codable) || deriving.contains(DerivingType.AndroidParcelable)
+    val conformances = Seq(
+      if (equatable) "@retroactive Equatable" else "",
+      if (deriving.contains(DerivingType.Ord)) "@retroactive Comparable" else "",
+      if (deriving.contains(DerivingType.Hashable)) "@retroactive Hashable" else "",
+      if (deriving.contains(DerivingType.Sendable)) "@retroactive @unchecked Sendable" else "",
+      if (codable) "@retroactive Codable" else ""
+    ).filter(_.nonEmpty)
+    writeSwiftFile(ident, origin, (refs.swiftImports ++ refs.privateImports ++ Seq(spec.swiftModule + "Cxx")).toSeq.distinct, w => {
+      writeDoc(w, doc)
+      w.wl(s"public typealias $name = $native")
+      if (deriving.contains(DerivingType.Sendable)) {
+        w.wl("// C++ storage cannot use Swift stored-property Sendable checking.")
+        w.wl("// Djinni validates value-only fields for this explicit deriving(sendable) opt-in.")
+      }
+      w.w(s"extension $native" + (if (conformances.isEmpty) "" else conformances.mkString(": ", ", ", ""))).braced {
+        generateSwiftConstants(w, r.consts)
+        for ((f, index) <- r.fields.zipWithIndex if marshal.needsRecordProperty(f)) {
+          writeDoc(w, f.doc)
+          w.w(s"public var ${idSwift.field(f.ident)}: ${marshal.fqFieldType(f.ty)}").braced {
+            val stored = "self." + marshal.nativeField(f.ident)
+            val read = if (nativeMarshal.isNative(f.ty.resolved)) stored else s"$helper.getField$index(self)"
+            w.w("get").braced { w.wl(s"return ${fieldFrom(f, index, read)}") }
+            w.w("set").braced {
+              val converted = fieldTo(f, index, "newValue")
+              w.wl(if (nativeMarshal.isNative(f.ty.resolved)) s"$stored = $converted" else s"$helper.setField$index(&self, $converted)")
+            }
+          }
+        }
+        if (r.fields.nonEmpty) {
+          val args = r.fields.map(f => s"${idSwift.field(f.ident)}: ${marshal.fqFieldType(f.ty)}").mkString(", ")
+          w.w(s"public init($args)").braced {
+            val values = r.fields.zipWithIndex.map { case (f, index) => fieldTo(f, index, idSwift.field(f.ident)) }.mkString(", ")
+            if (r.fields.forall(f => nativeMarshal.isNative(f.ty.resolved))) w.wl(s"self.init($values)")
+            else w.wl(s"self = $helper.makeNative($values)")
+          }
+        }
+        if (equatable && !deriving.contains(DerivingType.Eq)) w.w("public static func == (lhs: Self, rhs: Self) -> Bool").braced {
+          w.wl("return " + (if (r.fields.isEmpty) "true" else r.fields.map(f => s"lhs.${idSwift.field(f.ident)} == rhs.${idSwift.field(f.ident)}").mkString(" && ")))
+        }
+        if (deriving.contains(DerivingType.Hashable)) w.w("public func hash(into hasher: inout Hasher)").braced {
+          r.fields.foreach(f => w.wl(s"hasher.combine(self.${idSwift.field(f.ident)})"))
+        }
+        if (codable) {
+          w.wl(if (r.fields.isEmpty) "private enum CodingKeys: CodingKey {}" else "private enum CodingKeys: String, CodingKey { case " + r.fields.map(f => idSwift.field(f.ident)).mkString(", ") + " }")
+          w.w("public init(from decoder: any Decoder) throws").braced {
+            w.wl((if (r.fields.isEmpty) "_" else "let values") + " = try decoder.container(keyedBy: CodingKeys.self)")
+            w.wl("self.init(" + r.fields.map(f => s"${idSwift.field(f.ident)}: try values.${if (f.ty.resolved.base == MOptional) "decodeIfPresent" else "decode"}((${if (f.ty.resolved.base == MOptional) marshal.fqTypename(f.ty.resolved.args.head) else marshal.fqFieldType(f.ty)}).self, forKey: .${idSwift.field(f.ident)})").mkString(", ") + ")")
+          }
+          w.w("public func encode(to encoder: any Encoder) throws").braced {
+            w.wl((if (r.fields.isEmpty) "_" else "var values") + " = encoder.container(keyedBy: CodingKeys.self)")
+            r.fields.foreach { f =>
+              val encode = if (f.ty.resolved.base == MOptional) "encodeIfPresent" else "encode"
+              w.wl(s"try values.$encode(self.${idSwift.field(f.ident)}, forKey: .${idSwift.field(f.ident)})")
+            }
+          }
+        }
+      }
+    })
+    writeSwiftPrivateFile(ident, origin, refs.privateImports, w => {
+      w.w(s"public enum ${name}Marshaller: DjinniSupport.Marshaller").braced {
+        w.wl(s"public typealias SwiftType = ${marshal.fqTypename(ident, r)}")
+        writeNativeContainers(w, containers, helper, "")
+        w.wl(s"public static func toNative(_ s: borrowing SwiftType) -> $native { copy s }")
+        w.wl(s"public static func fromNative(_ c: consuming $native) -> SwiftType { c }")
+        w.wl(s"public static func fromCpp(_ c: djinni.swift.AnyValue) -> SwiftType { $helper.toCpp(c) }")
+        w.wl(s"public static func toCpp(_ s: SwiftType) -> djinni.swift.AnyValue { $helper.fromCpp(s) }")
+      }
+    })
+  }
+
   override def generateRecord(origin: String, ident: Ident, doc: Doc, params: Seq[TypeParam], r: Record) {
+    if (params.isEmpty && !r.ext.cpp) {
+      generateDirectRecord(origin, ident, doc, r)
+      return
+    }
     val refs = new SwiftRefs(ident.name)
     r.fields.foreach(f => refs.find(f.ty))
     writeSwiftFile(ident, origin, refs.swiftImports, w => {
@@ -410,9 +532,12 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
           writeMethodDoc(w, m, idSwift.local)
           w.w((if (nativeClass) "public " else "") + s"func ${swiftMethodName(m.ident)}(")
           if (m.params.nonEmpty) { w.w("_ ") }
-          w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${marshal.fqParamType(p.ty)}").mkString(", "))
+          w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${if (nativeClass && futureValue(m).isEmpty && marshal.isDirectRecord(p.ty.resolved)) "borrowing " else ""}${marshal.fqParamType(p.ty)}").mkString(", "))
           w.w(s")${methodEffects(m)} -> ${methodReturn(m)}")
-          if (nativeClass) w.braced { writeNativeCall(w, ident, m, "_djinniHandle") }
+          if (nativeClass) {
+            w.braced { writeNativeCall(w, ident, m, "_djinniHandle") }
+            writeNativeContainerOverload(w, ident, m, "_djinniHandle")
+          }
           else w.wl
         }
       }
@@ -427,7 +552,7 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
           for (m <- i.methods.filter(m => !m.static && !properties.contains(m) && !setters.contains(m))) {
             w.w(s"func ${swiftMethodName(m.ident)}(")
             if (m.params.nonEmpty) { w.w("_ ") }
-            w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${marshal.fqParamType(p.ty)}").mkString(", "))
+            w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${if (nativeClass && futureValue(m).isEmpty && marshal.isDirectRecord(p.ty.resolved)) "borrowing " else ""}${marshal.fqParamType(p.ty)}").mkString(", "))
             w.w(s")${methodEffects(m)} -> ${methodReturn(m)}").braced {
               writeNativeCall(w, ident, m)
             }
@@ -537,10 +662,11 @@ class SwiftGenerator(spec: Spec) extends Generator(spec) {
             w.w(s"public static func ${swiftMethodName(m.ident)}(")
             val factory = marshal.isFactory(ident.name, m)
             if (m.params.nonEmpty && !factory) { w.w("_ ") }
-            w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${marshal.fqParamType(p.ty)}").mkString(", "))
+            w.w(m.params.map(p => s"${idSwift.local(p.ident)}: ${if (nativeClass && futureValue(m).isEmpty && marshal.isDirectRecord(p.ty.resolved)) "borrowing " else ""}${marshal.fqParamType(p.ty)}").mkString(", "))
             w.w(s")${methodEffects(m)} -> ${methodReturn(m)}").braced {
               writeNativeCall(w, ident, m)
             }
+            writeNativeContainerOverload(w, ident, m, "inst")
           }
         }
       }
