@@ -11,6 +11,10 @@ public final class DJPromise<Value> {
         complete = completion
     }
 
+    deinit {
+        future.resolve(.failure(DjinniError("DJPromise was deallocated before setting a result")))
+    }
+
     public func setValue(_ value: Value) { complete(.success(value)) }
     public func setException(_ error: DjinniError) { complete(.failure(error)) }
     public func getFuture() -> DJFuture<Value> { future }

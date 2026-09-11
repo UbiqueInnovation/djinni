@@ -1,6 +1,7 @@
 #pragma once
 
 #include <variant>
+#include <optional>
 #include <string>
 #include <vector>
 #include <memory>
@@ -64,6 +65,24 @@ using AnyValue = std::variant<VoidValue, I32Value, I64Value, DoubleValue,
     StringValue, BinaryValue, DateValue, ErrorValue, OpaqueValuePtr, RangeValue,
     InterfaceValue, CompositeValuePtr>;
 
+// Inline success storage: no variant packing or heap allocation for native values.
+template<typename T> struct NativeResult {
+    std::optional<T> value;
+    AnyValue error;
+    NativeResult(T v): value(std::move(v)) {}
+    NativeResult(ErrorValue e): error(std::move(e)) {}
+    bool hasError() const { return !value.has_value(); }
+    T takeValue() { return std::move(value).value(); }
+    AnyValue getError() const { return error; }
+};
+template<> struct NativeResult<void> {
+    AnyValue error;
+    NativeResult(): error(VoidValue{}) {}
+    NativeResult(ErrorValue e): error(std::move(e)) {}
+    bool hasError() const { return std::holds_alternative<ErrorValue>(error); }
+    AnyValue getError() const { return error; }
+};
+
 struct CompositeValue {
     virtual ~CompositeValue() = default;
     std::vector<AnyValue> _elems;
@@ -78,7 +97,6 @@ struct CompositeValue {
     size_t getSize() const { return _elems.size(); }
 };
 
-struct ParameterList: CompositeValue {};
 
 // Swift callable functions
 AnyValue makeStringValue(const char* bytes, size_t size);
@@ -88,7 +106,6 @@ AnyValue makeRangeValue(const void* bytes, size_t size);
 size_t getSize(const AnyValue* v);
 AnyValue getMember(const AnyValue* v, size_t i);
 void addMember(AnyValue* c, const AnyValue& v);
-AnyValue getMember(const ParameterList* v, size_t i);
 void setReturnValue(AnyValue* ret, const AnyValue& v);
 void setErrorValue(AnyValue* ret, const ErrorValue& v);
 void setErrorMessage(AnyValue* ret, const std::string& s);
@@ -104,18 +121,22 @@ struct InterfaceInfo {
 };
 InterfaceInfo getInterfaceInfo(const AnyValue* v);
 
-using WeakSwiftProxy = std::weak_ptr<ProtocolWrapper>;
+struct WeakSwiftProxy {
+    std::weak_ptr<ProtocolWrapper> wrapper;
+    // Preserve the interface subobject address across multiple inheritance.
+    void* interfacePointer;
+};
 WeakSwiftProxy weakify(const AnyValue& v);
 AnyValue strongify(const WeakSwiftProxy& v);
 
 // -------- Swift protocol trampoline
-typedef void (*DispatchFunc)(void* ctx, int idx /* -1 for cleanup*/, const ParameterList* params, AnyValue* ret);
+typedef void (*DispatchFunc)(void* ctx, int idx /* -1 for cleanup*/, void* params, AnyValue* ret);
 class ProtocolWrapper {
 protected:
     void* _ctx;
     DispatchFunc _dispatcher;
     ProtocolWrapper(void* ctx, DispatchFunc dispatcher);
-    AnyValue callProtocol(int idx, const ParameterList* params);
+    void callProtocol(int idx, void* params);
 public:
     virtual ~ProtocolWrapper();
     void* ctx() const { return _ctx; }
@@ -145,6 +166,8 @@ using F64 = Number<double, DoubleValue>;
 template <typename T>
 struct Enum {
     using CppType = T;
+    static T toNative(int32_t value) { return static_cast<T>(value); }
+    static int32_t fromNative(T value) { return static_cast<int32_t>(value); }
     static AnyValue fromCpp(T v) {
         return {static_cast<int32_t>(v)};
     }
@@ -283,6 +306,11 @@ public:
 class Binary {
 public:
     using CppType = std::vector<uint8_t>;
+
+    // Keep vector construction in the optimized C++ target, rather than Swift-imported inline code.
+    static CppType fromBytes(const void* bytes, size_t size);
+    // The range is borrowed and must not outlive c.
+    static RangeValue borrowedBytes(const CppType& c) { return {c.data(), c.size()}; }
 
     static AnyValue fromCpp(const CppType& c) {
         return makeBinaryValue(c.data(), c.size());

@@ -1,10 +1,66 @@
 @extern "../../support-lib/dataref.yaml"
-coordinate = record { x: f64; y: f64; } deriving(eq)
+@extern "../../support-lib/future.yaml"
+mode = enum { first; second; FIRST_VALUE; DEFAULT; }
+options = flags { read; write; }
+tagged = record { value: coordinate; mode: mode; options: options; } deriving(eq, sendable)
+payload = record { items: list<coordinate>; note: optional<string>; } deriving(eq, parcelable, codable, sendable)
+coordinate = record { x: f64; y: f64; } deriving(eq, ord, parcelable, sendable)
 callback = interface +sw { transform(value: coordinate): coordinate; }
+rich_callback = interface +sw { inspect(value: payload): payload; notify(); }
+state = interface +c +sw { get_value(): i32; set_value(value: i32); }
+containers = record { nested: list<list<coordinate>>; flags: list<bool>; optional_items: optional<list<coordinate>>; notes: list<optional<string>>; tagged: optional<tagged>; values: array<f64>; } deriving(eq)
+container_callback = interface +sw { transform(values: list<coordinate>, names: optional<list<optional<string>>>, flags: array<bool>): optional<list<coordinate>>; }
+container_only = record { number: i32; } deriving(eq)
+associative = record { locations: map<string, optional<coordinate>>; tags: set<string>; groups: map<string, list<coordinate>>; nested: optional<map<string, set<i32>>>; flags: map<bool, set<bool>>; modes: set<mode>; } deriving(eq)
+map_callback = interface +sw { transform(values: map<string, coordinate>, tags: set<string>): map<string, coordinate>; }
+interface_values = record { states: list<state>; named: map<string, optional<state>>; counter: optional<counter_interface>; }
+interface_callback = interface +sw { transform(values: list<state>, fallback: optional<state>): list<state>; }
+data_values = record { binary: binary; optional_binary: optional<binary>; binaries: list<binary>; data: DataRef; optional_data: optional<DataRef>; chunks: list<DataRef>; }
+data_callback = interface +sw { transform(value: data_values): data_values; }
+future_callback = interface +sw { get_value(): future<coordinate>; get_data(): future<DataRef>; transform(value: payload): future<payload>; transform_values(values: list<coordinate>): future<list<coordinate>>; }
 engine = interface +c {
+    static future(mode: i32): future<coordinate>;
+    run_async_values(values: list<coordinate>, callback: future_callback): future<list<coordinate>>;
+    run_async_payload(value: payload, callback: future_callback): future<payload>;
+    static future_values(count: i32): future<list<coordinate>>;
+    static future_data(): future<DataRef>;
+    run_future_data(callback: future_callback): future<DataRef>;
+    run_future(callback: future_callback): future<coordinate>;
+    binary(data: binary): binary;
+    run_data(value: data_values, callback: data_callback): data_values;
+    interfaces(value: interface_values): interface_values;
+    run_interfaces(values: list<state>, fallback: optional<state>, callback: interface_callback): list<state>;
+    associative(value: associative): associative;
+    locations(values: map<string, coordinate>): map<string, coordinate>;
+    tags(values: set<string>): set<string>;
+    run_map(values: map<string, coordinate>, tags: set<string>, callback: map_callback): map<string, coordinate>;
+    static container_only(values: list<container_only>): list<container_only>;
+    points(values: list<coordinate>): list<coordinate>;
+    optional_points(values: optional<list<coordinate>>): optional<list<coordinate>>;
+    run_containers(values: list<coordinate>, names: optional<list<optional<string>>>, flags: array<bool>, callback: container_callback): optional<list<coordinate>>;
+    static optional_number(value: optional<i32>): optional<i32>;
+    containers(value: containers): containers;
+    get_count(): i32;
+    get_default(): i32;
+    set_count(value: i32);
+    update_state(state: state): i32;
+    static state(): state;
+    inspect(value: payload, callback: rich_callback): payload;
+    retain(callback: callback);
+    release();
+    retained(value: coordinate): coordinate;
     static create(): engine;
     run(value: coordinate, callback: callback): coordinate;
+    payload(value: payload): payload;
+    text(value: string): string;
+    tag(value: tagged): tagged;
+    shift(value: coordinate): coordinate;
+    static scale(value: f64): f64;
     fail();
     echo(data: DataRef): DataRef;
     bytes(): DataRef;
 }
+
+counter_interface = interface +c { static create(initial_value: i32): counter_interface; get_value(): i32; }
+
+sendable_value = record { value: i32; } deriving(sendable)

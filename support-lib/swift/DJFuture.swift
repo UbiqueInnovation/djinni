@@ -1,113 +1,115 @@
 import DjinniSupportCxx
 import Foundation
 
-// A custom Future<> type thanks to Logan Shire <@LoganShireSnapchat>
 public final class Cancellable {
-    private let closure: () -> Void
+    private let lock = NSLock()
+    private var closure: (() -> Void)?
 
-    init(closure: @escaping () -> Void) {
-        self.closure = closure
+    init(closure: @escaping () -> Void) { self.closure = closure }
+
+    public func cancel() {
+        lock.lock()
+        let action = closure
+        closure = nil
+        lock.unlock()
+        action?()
     }
 
-    func cancel() {
-        self.closure()
-    }
-
-    deinit {
-        self.closure()
-    }
+    deinit { cancel() }
 }
 
 public typealias Lock = NSLock
 
-public final class Future<Output, Failure> where Failure : Error {
+public final class Future<Output, Failure> where Failure: Error {
     public typealias Promise = (Result<Output, Failure>) -> Void
-
-    // The token only needs to be unique within the scope of the Future object
-    typealias Token = Int64
-    var nextTokenValue: Token = 0
-    private func generateToken() -> Token {
-        return OSAtomicIncrement64(&nextTokenValue)
-    }
-
-    private let lock = Lock()
+    private typealias Token = Int64
+    private var nextToken: Token = 0
+    // C++ completion and subscription are synchronous and may run on different threads.
+    // This lock protects state only; user callbacks always run after unlocking.
+    private let lock = NSLock()
     private var storedResult: Result<Output, Failure>?
-    private var subscriptions = [Token : Promise]()
+    private var subscriptions = [Token: Promise]()
 
     public init(_ attemptToFulfill: @escaping (@escaping Promise) -> Void) {
         attemptToFulfill { [weak self] result in
             guard let self else { return }
+            let completed = self.resolve(result)
+            assert(completed, "attempted to fulfill future multiple times")
+        }
+    }
 
-            self.lock.lock()
-
-            // If the promise was already fulfilled, fire an assertion failure, unlock and return:
-            if self.storedResult != nil {
-                assertionFailure("attempted to fulfill future multiple times")
-                self.lock.unlock()
-                return
-            }
-
-            // Otherwise, make a copy of the completion handlers and clear them out,
-            // and then store the result and unlock:
-            let copiedSubscriptions = self.subscriptions
-            self.subscriptions = [:]
-            self.storedResult = result
-            self.lock.unlock()
-
-            // Run the completion handlers in parallel after unlocking:
-            for subscription in copiedSubscriptions.values {
-                DispatchQueue.global(qos: .default).async {
-                    subscription(result)
-                }
+    /// Starts an async operation from a synchronous bridge, on the nonisolated executor.
+    public convenience init(operation: @escaping () async throws -> Output) where Failure == DjinniError {
+        self.init { complete in
+            Task {
+                do { complete(.success(try await operation())) }
+                catch let error as DjinniError { complete(.failure(error)) }
+                catch { complete(.failure(DjinniError(String(describing: error)))) }
             }
         }
+    }
+
+    @discardableResult
+    func resolve(_ makeResult: @autoclosure () -> Result<Output, Failure>) -> Bool {
+        lock.lock()
+        guard storedResult == nil else {
+            lock.unlock()
+            return false
+        }
+        let result = makeResult()
+        let callbacks = subscriptions.values
+        subscriptions = [:]
+        storedResult = result
+        lock.unlock()
+        // Match the C++ future and the already-resolved path: no forced queue hop.
+        for callback in callbacks { callback(result) }
+        return true
     }
 
     public var value: Output {
         get async throws {
-            let token = generateToken()
-            return try await withTaskCancellationHandler {
-                return try await withCheckedThrowingContinuation { continuation in
-                    self.subscribe(token: token) { result in
-                        continuation.resume(with: result)
+            try Task.checkCancellation()
+            // AsyncThrowingStream owns the completion/cancellation race and unregisters
+            // the subscription when its single result is consumed or the task is cancelled.
+            let stream = AsyncThrowingStream<Output, Error> { continuation in
+                let subscription = getResult { result in
+                    switch result {
+                    case .success(let value):
+                        continuation.yield(value)
+                        continuation.finish()
+                    case .failure(let error):
+                        continuation.finish(throwing: error)
                     }
                 }
-            } onCancel: {
-                self.cancel(token: token)
+                continuation.onTermination = { _ in subscription.cancel() }
             }
+            var iterator = stream.makeAsyncIterator()
+            guard let value = try await iterator.next() else { throw CancellationError() }
+            return value
         }
     }
 
+    /// Invokes the callback on the resolving thread, or immediately if already resolved.
     public func getResult(subscription: @escaping Promise) -> Cancellable {
-        let token = generateToken()
-        self.subscribe(token: token, subscription: subscription)
-        return Cancellable {
-            self.cancel(token: token)
-        }
-    }
-
-    // MARK: Private
-
-    private func subscribe(token: Token, subscription: @escaping Promise) {
-        self.lock.lock()
-        defer { self.lock.unlock() }
-
-        if let result = self.storedResult {
-            subscription(result)
-            return
-        }
-
-        self.subscriptions[token] = subscription
+        lock.lock()
+        nextToken &+= 1
+        let token = nextToken
+        let result = storedResult
+        if result == nil { subscriptions[token] = subscription }
+        lock.unlock()
+        if let result { subscription(result) }
+        return Cancellable { self.cancel(token: token) }
     }
 
     private func cancel(token: Token) {
-        self.lock.lock()
-        self.subscriptions[token] = nil
-        self.lock.unlock()
+        lock.lock()
+        // Release captured objects after unlocking: their deinit may reenter this future.
+        let removed = subscriptions.removeValue(forKey: token)
+        lock.unlock()
+        withExtendedLifetime(removed) {}
     }
 }
 
-// DJinni future<> maps to Combine.Future<> in Swift
 public typealias DJFuture<T> = Future<T, DjinniError>
 
 // Type erased interface for PromiseHolder because in futureCb() we don't have
@@ -144,11 +146,17 @@ public func futureCb(
 // A C++ friendly function to release the subscription token stored with the C++
 // future value.
 public func cleanupCb(psubscription: UnsafeMutableRawPointer?) -> Void {
-    let _ = Unmanaged<Cancellable>.fromOpaque(psubscription!).takeRetainedValue()
+    guard let psubscription else { return }
+    _ = Unmanaged<Cancellable>.fromOpaque(psubscription).takeRetainedValue()
 }
 
 public enum FutureMarshaller<T: Marshaller>: Marshaller {
     public typealias SwiftType = DJFuture<T.SwiftType>
+    // A C++ callback must return its future synchronously. The task owns the
+    // producer until the Swift async implementation completes on its executor.
+    public static func toCppAsync(_ operation: @escaping () async throws -> T.SwiftType) -> djinni.swift.AnyValue {
+        return toCpp(SwiftType(operation: operation))
+    }
     public static func fromCpp(_ v: djinni.swift.AnyValue) -> SwiftType {
         return Future() { promise in
             // Allocate the Swift future wrapper
@@ -162,22 +170,60 @@ public enum FutureMarshaller<T: Marshaller>: Marshaller {
     }
     public static func toCpp(_ s: SwiftType) -> djinni.swift.AnyValue {
         // Create a C++ future
-        var futureValue = djinni.swift.makeFutureValue(cleanupCb)
+        let futureValue = djinni.swift.makeFutureValue(cleanupCb)
         // Connect it with the Swift future
         let cancellable = s.getResult { result in
             switch result {
             case .success(let value):
-                var cppValue = T.toCpp(value)
-                djinni.swift.setFutureResult(&futureValue, &cppValue)
+                let cppValue = T.toCpp(value)
+                withUnsafePointer(to: futureValue) { future in
+                    withUnsafePointer(to: cppValue) { djinni.swift.setFutureResult(future, $0) }
+                }
             case .failure(let error):
                 var errorValue = djinni.swift.makeVoidValue()
                 djinni.swift.setErrorValue(&errorValue, error.wrapped)
-                djinni.swift.setFutureResult(&futureValue, &errorValue)
+                withUnsafePointer(to: futureValue) { future in
+                    withUnsafePointer(to: errorValue) { djinni.swift.setFutureResult(future, $0) }
+                }
             }
         }
         // Store the cancellable token so that the connection remains alive.
         let pSubscription = Unmanaged.passRetained(cancellable).toOpaque()
-        djinni.swift.storeSubscription(&futureValue, pSubscription)
+        withUnsafePointer(to: futureValue) { djinni.swift.storeSubscription($0, pSubscription) }
         return futureValue
     }
+}
+
+// C++ owns this context until its completion handler is destroyed, including
+// abandoned producers. Cancellation finishes the waiter without cancelling C++.
+private final class NativeFutureCompletion {
+    let complete: (UnsafeMutableRawPointer) -> Void
+    init(_ complete: @escaping (UnsafeMutableRawPointer) -> Void) { self.complete = complete }
+}
+
+public func awaitNativeFuture<Value>(
+    _ subscribe: (UnsafeMutableRawPointer, @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void, @convention(c) (UnsafeMutableRawPointer?) -> Void) -> Void,
+    decode: @escaping (UnsafeMutableRawPointer) throws -> Value
+) async throws -> Value {
+    try Task.checkCancellation()
+    let stream = AsyncThrowingStream<Value, Error> { continuation in
+        let context = NativeFutureCompletion { raw in
+            do {
+                continuation.yield(try decode(raw))
+                continuation.finish()
+            } catch { continuation.finish(throwing: error) }
+        }
+        subscribe(Unmanaged.passRetained(context).toOpaque(), { context, result in
+            Unmanaged<NativeFutureCompletion>.fromOpaque(context!).takeUnretainedValue().complete(result!)
+        }, { context in
+            Unmanaged<NativeFutureCompletion>.fromOpaque(context!).release()
+        })
+    }
+    var iterator = stream.makeAsyncIterator()
+    guard let value = try await iterator.next() else { throw CancellationError() }
+    return value
+}
+
+public func nativeFutureError(_ error: Error) -> djinni.swift.ErrorValue {
+    (error as? DjinniError ?? DjinniError(String(describing: error))).wrapped
 }

@@ -57,6 +57,8 @@ object Main {
     var kotlinKmpCommonOutFolder: Option[File] = None
     var kotlinKmpAndroidOutFolder: Option[File] = None
     var kotlinKmpIosOutFolder: Option[File] = None
+    var kotlinKmpSwiftOutFolder: Option[File] = None
+    var kotlinKmpSwiftModule: String = "Shared"
     var kotlinKmpPackage: Option[String] = None
     var kotlinKmpIosModule: Option[String] = None
     var kotlinKmpBridgePrefix: Option[String] = None
@@ -189,6 +191,10 @@ object Main {
         .text("The output for Kotlin KMP androidMain files (Generator disabled if unspecified).")
       opt[File]("kotlin-kmp-ios-out").valueName("<out-folder>").foreach(x => kotlinKmpIosOutFolder = Some(x))
         .text("The output for Kotlin KMP iosMain files (Generator disabled if unspecified).")
+      opt[File]("kotlin-kmp-swift-out").valueName("<out-folder>").foreach(x => kotlinKmpSwiftOutFolder = Some(x))
+        .text("The output for Swift adapters implementing Kotlin Swift-export contracts.")
+      opt[String]("kotlin-kmp-swift-module").valueName("<module>").foreach(x => kotlinKmpSwiftModule = x)
+        .text("The Kotlin Swift-export module imported by generated Swift adapters.")
       opt[String]("kotlin-kmp-package").valueName("<package>").foreach(x => kotlinKmpPackage = Some(x))
         .text("The package name to use for Kotlin KMP files.")
       opt[String]("kotlin-kmp-ios-module").valueName("<module>").foreach(x => kotlinKmpIosModule = Some(x))
@@ -477,6 +483,8 @@ object Main {
       kotlinKmpCommonOutFolder,
       kotlinKmpAndroidOutFolder,
       kotlinKmpIosOutFolder,
+      kotlinKmpSwiftOutFolder,
+      kotlinKmpSwiftModule,
       kotlinKmpPackage,
       kotlinKmpIosModule,
       kotlinKmpBridgePrefix,

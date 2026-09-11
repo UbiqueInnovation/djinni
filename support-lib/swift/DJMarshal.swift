@@ -86,6 +86,16 @@ public enum StringMarshaller: Marshaller {
 
 public enum BinaryMarshaller: Marshaller {
     public typealias SwiftType = Data
+    public typealias NativeType = djinni.swift.Binary.CppType
+    public static func toNative(_ s: SwiftType) -> NativeType {
+        s.withUnsafeBytes { djinni.swift.Binary.fromBytes($0.baseAddress, $0.count) }
+    }
+    public static func fromNative(_ c: NativeType) -> SwiftType {
+        withExtendedLifetime(c) {
+            let range = djinni.swift.Binary.borrowedBytes(c)
+            return range.size == 0 ? Data() : Data(bytes: range.bytes!, count: range.size)
+        }
+    }
     static public func fromCpp(_ v: djinni.swift.AnyValue) -> SwiftType {
         let range = djinni.swift.getBinaryRange(v)
         if (range.size > 0) {
@@ -96,8 +106,7 @@ public enum BinaryMarshaller: Marshaller {
     }
     static public func toCpp(_ s: SwiftType) -> djinni.swift.AnyValue {
         return s.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
-            return djinni.swift.makeBinaryValue(UnsafeMutableRawPointer(mutating: ptr.baseAddress!),
-                                                ptr.count)
+            return djinni.swift.makeBinaryValue(ptr.baseAddress, ptr.count)
         }
     }
 }
@@ -106,10 +115,10 @@ public enum DateMarshaller: Marshaller {
     public typealias SwiftType = Date
     static public func fromCpp(_ v: djinni.swift.AnyValue) -> SwiftType {
         let millisecondsSinceEpoch = I64Marshaller.fromCpp(v)
-        return Date(timeIntervalSince1970: Double(millisecondsSinceEpoch))
+        return Date(timeIntervalSince1970: Double(millisecondsSinceEpoch) / 1000)
     }
     static public func toCpp(_ s: SwiftType) -> djinni.swift.AnyValue {
-        return I64Marshaller.toCpp(Int64(s.timeIntervalSince1970))
+        return I64Marshaller.toCpp(Int64((s.timeIntervalSince1970 * 1000).rounded()))
     }
 }
 

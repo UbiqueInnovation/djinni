@@ -127,18 +127,26 @@ DataRef DataRefAdaptor::toCpp(const AnyValue& s) {
         return result;
     } else {
         auto data = reinterpret_cast<CFDataRef>(range.bytes);
-        auto result = DataRef(std::make_unique<DataRefSwift>(data));
+        auto result = fromFoundation(data);
         CFRelease(data);
         return result;
     }
 }
 
+DataRef DataRefAdaptor::fromFoundation(const void* data) {
+    return DataRef(std::make_unique<DataRefSwift>(static_cast<CFDataRef>(data)));
+}
+
 AnyValue DataRefAdaptor::fromCpp(const DataRef& c) {
+    return RangeValue{static_cast<const uint8_t*>(retainedFoundation(c)), 0};
+}
+
+const void* DataRefAdaptor::retainedFoundation(const DataRef& c) {
     auto impl = c.getOrBindPlatform<DataRefSwift>();
     // A DataRef may already be bound to another backend (e.g. the ObjC bridge).
     auto cfdata = impl ? impl->platformObj() : CFDataCreate(kCFAllocatorDefault, c.buf(), c.len());
     if (impl) CFRetain(cfdata);
-    return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
+    return cfdata;
 }
 
 }

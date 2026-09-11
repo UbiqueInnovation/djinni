@@ -22,6 +22,17 @@ public enum DataViewMarshaller: Marshaller {
 // to NSData.
 public enum DataRefMarshaller: Marshaller {
     public typealias SwiftType = Data
+    public typealias NativeType = djinni.DataRef
+    public static func toNative(_ s: SwiftType) -> NativeType {
+        let data = s as NSData
+        return withExtendedLifetime(data) {
+            djinni.swift.DataRefAdaptor.fromFoundation(Unmanaged.passUnretained(data).toOpaque())
+        }
+    }
+    public static func fromNative(_ c: NativeType) -> SwiftType {
+        let pointer = djinni.swift.DataRefAdaptor.retainedFoundation(c)!
+        return Unmanaged<CFData>.fromOpaque(pointer).takeRetainedValue() as Data
+    }
     public static func fromCpp(_ v: djinni.swift.AnyValue) -> SwiftType {
         let range = djinni.swift.getBinaryRange(v)
         let cfdata = Unmanaged<CFData>.fromOpaque(range.bytes!).takeRetainedValue()

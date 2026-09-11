@@ -108,7 +108,8 @@ object MExtern {
     module: String,
     translator: String,
     translatorModule: String,
-    generic: Boolean
+    generic: Boolean,
+    native: Boolean = false
   )
   case class Swiftxx(
     translator: String,

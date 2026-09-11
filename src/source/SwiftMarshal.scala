@@ -21,11 +21,50 @@ import djinni.generatorTools._
 import djinni.meta._
 
 class SwiftMarshal(spec: Spec) extends Marshal(spec) {
+  private val swiftKeywords = Set("case", "default", "repeat", "switch", "class", "struct", "enum", "protocol", "extension", "func", "var", "let", "init", "deinit", "return", "throw", "throws", "try", "catch", "do", "if", "else", "for", "while", "in", "is", "as", "self", "super", "nil", "true", "false", "static", "private", "public", "internal", "fileprivate", "import", "associatedtype", "typealias", "where", "break", "continue", "defer", "fallthrough", "guard", "inout", "operator", "rethrows", "subscript")
+  def escapeSwiftIdent(value: String): String = if (swiftKeywords.contains(value)) s"`$value`" else value
+  def swiftMethodName(ident: String) = {
+    val reservedNames = Array("init", "deinit")
+    val name = idSwift.method(ident)
+    if (reservedNames.contains(name)) {
+      "_" + name
+    } else {
+      name
+    }
+  }
+
+  def futureValue(m: Interface.Method): Option[MExpr] = m.ret.flatMap { t =>
+    t.resolved.base match {
+      case e: MExtern if e.swift.translator == "FutureMarshaller" && t.resolved.args.size == 1 => Some(t.resolved.args.head)
+      case _ => None
+    }
+  }
+  def properties(i: Interface): Seq[Interface.Method] =
+    i.methods.filter(m => !m.static && m.ident.name.startsWith("get_") && m.params.isEmpty && m.ret.nonEmpty).filter { m =>
+      val name = m.ident.name.stripPrefix("get_")
+      !i.methods.exists(other => other.ident.name == name || (other != m && other.ident == m.ident)) && !i.consts.exists(_.ident.name == name)
+    }
+  def propertyName(m: Interface.Method): String = escapeSwiftIdent(swiftMethodName(m.ident.name.stripPrefix("get_")))
+  def setterFor(i: Interface, m: Interface.Method): Option[Interface.Method] = {
+    val setters = i.methods.filter(s => !s.static && s.ident.name == "set_" + m.ident.name.stripPrefix("get_") &&
+      s.params.size == 1 && s.ret.isEmpty && s.params.head.ty.resolved == m.ret.get.resolved)
+    if (spec.swiftNonThrowing && futureValue(m).isEmpty && setters.size == 1) setters.headOption else None
+  }
+  def isFactory(owner: String, m: Interface.Method): Boolean = {
+    def returnsSelf(tm: MExpr): Boolean = tm.base match {
+      case d: MDef => d.name == owner
+      case MOptional => returnsSelf(tm.args.head)
+      case _ => false
+    }
+    m.ident.name.startsWith("create") || m.ret.exists(t => returnsSelf(t.resolved))
+  }
+  def enumName(name: String): String = escapeSwiftIdent(idSwift.enum(name.toLowerCase(java.util.Locale.ROOT)))
+
   override def typename(tm: MExpr): String = toSwiftType(tm, None)
   def typename(name: String, ty: TypeDef): String = idSwift.ty(name)
 
   override def fqTypename(tm: MExpr): String = toSwiftType(tm, Some(spec.swiftModule))
-  def fqTypename(name: String, ty: TypeDef): String = withPackage(Some(spec.swiftModule), idSwift.ty(name))
+  def fqTypename(name: String, ty: TypeDef): String = withPackage(Some(spec.swiftModule), typename(name, ty))
 
   override def paramType(tm: MExpr): String = toSwiftType(tm, None)
   override def fqParamType(tm: MExpr): String = toSwiftType(tm, Some(spec.swiftModule))
@@ -57,8 +96,10 @@ class SwiftMarshal(spec: Spec) extends Marshal(spec) {
           val arg = tm.args.head
           arg.base match {
             case MOptional => throw new AssertionError("nested optional?")
-            case m => s"Optional<${f(arg)}>"
+            case m => s"${f(arg)}?"
           }
+        case MList | MArray => s"[${f(tm.args.head)}]"
+        case MMap => s"[${f(tm.args.head)}: ${f(tm.args(1))}]"
         case e: MExtern => Array(e.swift.module, e.swift.typename).filter(s => !s.isEmpty).mkString(".") + (if (e.swift.generic) args(tm) else "")
         case p: MProtobuf => p.body.swift match {
           case Some(o) => o.prefix + p.name
@@ -75,7 +116,7 @@ class SwiftMarshal(spec: Spec) extends Marshal(spec) {
             case MArray => "Array"
             case MSet => "Set"
             case MMap => "Dictionary"
-            case d: MDef => withPackage(packageName, idSwift.ty(d.name))
+            case d: MDef => withPackage(packageName, typename(d.name, d.body))
             case e: MExtern => throw new AssertionError("unreachable")
             case e: MProtobuf => throw new AssertionError("unreachable")
             case p: MParam => idSwift.typeParam(p.name)

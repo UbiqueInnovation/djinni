@@ -49,6 +49,8 @@ package object generatorTools {
                    kotlinKmpCommonOutFolder: Option[File],
                    kotlinKmpAndroidOutFolder: Option[File],
                    kotlinKmpIosOutFolder: Option[File],
+                   kotlinKmpSwiftOutFolder: Option[File],
+                   kotlinKmpSwiftModule: String,
                    kotlinKmpPackage: Option[String],
                    kotlinKmpIosModule: Option[String],
                    kotlinKmpBridgePrefix: Option[String],
@@ -320,6 +322,10 @@ package object generatorTools {
           spec.kotlinKmpIosOutFolder.foreach(createFolder("Kotlin KMP ios", _))
         }
         new KotlinKmpGenerator(spec).generate(idl)
+      }
+      if (spec.kotlinKmpSwiftOutFolder.isDefined) {
+        if (!spec.skipGeneration) createFolder("Kotlin KMP Swift adapters", spec.kotlinKmpSwiftOutFolder.get)
+        new KotlinKmpSwiftGenerator(spec).generate(idl)
       }
       if (spec.jniOutFolder.isDefined) {
         if (!spec.skipGeneration) {

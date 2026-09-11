@@ -133,6 +133,10 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
           case Record.DerivingType.Ord => "ord"
           case Record.DerivingType.AndroidParcelable => "parcelable"
           case Record.DerivingType.NSCopying => "nscopying"
+          case Record.DerivingType.Hashable => "hashable"
+          case Record.DerivingType.Sendable => "sendable"
+          case Record.DerivingType.Codable => "codable"
+          case Record.DerivingType.Error => "error"
         }.mkString(" deriving(", ", ", ")")
       }
     }
@@ -215,7 +219,8 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
     "typename" -> QuotedString(swiftMarshal.typename(td.ident, td.body)),
     "module" -> QuotedString(spec.swiftModule),
     "translator" -> QuotedString(swiftMarshal.helperName(mexpr(td))),
-    "translator.module" -> QuotedString(spec.swiftModule)
+    "translator.module" -> QuotedString(spec.swiftModule),
+    "native" -> swiftxxMarshal.isNative(mexpr(td))
   )
   private def swiftxx(td: TypeDecl) = Map[String, Any](
     "translator" -> QuotedString(swiftxxMarshal.helperName(mexpr(td))),
@@ -315,7 +320,8 @@ object YamlGenerator {
       getOptionalField(td, "swift", "module", ""),
       getOptionalField(td, "swift", "translator"),
       getOptionalField(td, "swift", "translator.module", ""),
-      getOptionalField(td, "swift", "generic", false)),
+      getOptionalField(td, "swift", "generic", false),
+      getOptionalField(td, "swift", "native", false)),
     MExtern.Swiftxx(
       getOptionalField(td, "swiftxx", "translator"),
       getOptionalField(td, "swiftxx", "header"))

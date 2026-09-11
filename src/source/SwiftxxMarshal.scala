@@ -22,6 +22,60 @@ import djinni.meta._
 
 class SwiftxxMarshal(spec: Spec) extends Marshal(spec) {
 
+  // Types with a direct Swift/C++ conversion; external generators advertise support in YAML.
+  def isNative(tm: MExpr): Boolean = tm.base match {
+    case _: MPrimitive => true
+    case MBinary => true
+    case MString => !spec.cppUseWideStrings
+    case MList | MArray | MOptional | MMap | MSet => isNativeContainer(tm)
+    case e: MExtern => e.swift.native && tm.args.isEmpty
+    case d: MDef => d.body match {
+      case _: Enum => true
+      case _: Record => tm.args.isEmpty
+      case _: Interface => tm.args.isEmpty && spec.cppNnType.isEmpty
+      case _ => false
+    }
+    case _ => false
+  }
+
+  def nativeFutureValue(tm: MExpr): Option[MExpr] = tm.base match {
+    case e: MExtern if e.swift.translator == "FutureMarshaller" && tm.args.size == 1 && isNative(tm.args.head) => Some(tm.args.head)
+    case _ => None
+  }
+
+  def isInterface(tm: MExpr): Boolean = tm.base match {
+    case d: MDef => d.defType == DInterface
+    case e: MExtern => e.defType == DInterface
+    case _ => false
+  }
+
+  def isBoolean(tm: MExpr): Boolean = tm.base match {
+    case p: MPrimitive => p.idlName == "bool"
+    case _ => false
+  }
+
+  // Concrete aliases expose STL specializations to Swift's importer.
+  def isNativeContainer(tm: MExpr): Boolean = tm.base match {
+    case MList | MArray | MSet => isNative(tm.args.head)
+    case MMap => tm.args.forall(isNative)
+    case MOptional if spec.cppOptionalTemplate == "std::optional" => isNative(tm.args.head)
+    case _ => false
+  }
+  def nativeContainers(tm: MExpr, name: String): Seq[(String, MExpr)] = {
+    if (!isNativeContainer(tm)) Seq.empty
+    else if (tm.base == MMap) Seq(name -> tm) ++ nativeContainers(tm.args.head, name + "Key") ++ nativeContainers(tm.args(1), name + "Value")
+    else Seq(name -> tm) ++ nativeContainers(tm.args.head, name + "Element")
+  }
+
+  def methodContainerName(owner: String, method: Interface.Method, position: String): String =
+    idSwift.ty(owner) + "_" + idSwift.method(method.ident) + position
+
+  def interfaceContainers(owner: String, i: Interface): Seq[(String, MExpr)] =
+    i.methods.filter(m => !m.static || m.lang.swift).flatMap { m =>
+      val args = m.params.zipWithIndex.flatMap { case (p, index) => nativeContainers(p.ty.resolved, methodContainerName(owner, m, s"Arg$index")) }
+      args ++ m.ret.toSeq.flatMap(t => nativeContainers(nativeFutureValue(t.resolved).getOrElse(t.resolved), methodContainerName(owner, m, "Return")))
+    }
+
   override def typename(tm: MExpr): String = throw new AssertionError("not applicable")
   def typename(name: String, ty: TypeDef): String = throw new AssertionError("not applicable")
 

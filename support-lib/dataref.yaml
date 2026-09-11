@@ -42,6 +42,7 @@ swift:
   generic: false
   translator: 'DataRefMarshaller'
   translator.module: 'DjinniSupport'
+  native: true
 swiftxx:
   translator: '::djinni::swift::DataRefAdaptor'
   header: '"Data_swift.hpp"'

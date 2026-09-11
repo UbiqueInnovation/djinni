@@ -6,9 +6,14 @@ AnyValue makeStringValue(const char* bytes, size_t size) {
     return StringValue(bytes, size);
 }
 
+Binary::CppType Binary::fromBytes(const void* bytes, size_t size) {
+    if (size == 0) return {};
+    const auto* first = static_cast<const uint8_t*>(bytes);
+    return {first, first + size};
+}
+
 AnyValue makeBinaryValue(const void* bytes, size_t size) {
-    auto p = reinterpret_cast<const uint8_t*>(bytes);
-    return BinaryValue{p, p + size};
+    return Binary::fromBytes(bytes, size);
 }
 
 AnyValue makeRangeValue(const void* bytes, size_t size) {
@@ -37,10 +42,6 @@ AnyValue getMember(const AnyValue* v, size_t i) {
     return composite->getValue(i);
 }
 
-AnyValue getMember(const ParameterList* v, size_t i) {
-    return v->getValue(i);
-}
-
 void addMember(AnyValue* c, const AnyValue& v) {
     auto composite = std::get<CompositeValuePtr>(*c);
     composite->addValue(v);
@@ -60,11 +61,16 @@ void setErrorMessage(AnyValue* ret, const std::string& s) {
 
 WeakSwiftProxy weakify(const AnyValue& v) {
     auto i = std::get<InterfaceValue>(v);
-    return i.sptr;
+    return {i.sptr, i.ptr.get()};
 }
 
 AnyValue strongify(const WeakSwiftProxy& v) {
-    return {v.lock()};
+    if (auto proxy = v.wrapper.lock()) {
+        auto value = InterfaceValue(proxy);
+        value.ptr = std::shared_ptr<void>(proxy, v.interfacePointer);
+        return value;
+    }
+    return VoidValue{};
 }
 
 InterfaceInfo getInterfaceInfo(const AnyValue* v) {
@@ -101,7 +107,7 @@ ProtocolWrapper::~ProtocolWrapper() {
     _dispatcher(_ctx, -1, nullptr, nullptr);
 }
 
-AnyValue ProtocolWrapper::callProtocol(int idx, const ParameterList* params) {
+void ProtocolWrapper::callProtocol(int idx, void* params) {
     AnyValue ret = VoidValue(); // output parameter
     _dispatcher(_ctx, idx, params, &ret);
     if (std::holds_alternative<ErrorValue>(ret)) {
@@ -114,7 +120,6 @@ AnyValue ProtocolWrapper::callProtocol(int idx, const ParameterList* params) {
             throw e;
         }
     }
-    return ret;
 }
 
 }
