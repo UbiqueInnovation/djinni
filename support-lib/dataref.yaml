@@ -36,3 +36,13 @@ wasm:
 ts:
   typename: 'Uint8Array'
   module: ''
+swift:
+  typename: 'Data'
+  module: 'Foundation'
+  generic: false
+  translator: 'DataRefMarshaller'
+  translator.module: 'DjinniSupport'
+  native: true
+swiftxx:
+  translator: '::djinni::swift::DataRefAdaptor'
+  header: '"Data_swift.hpp"'

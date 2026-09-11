@@ -315,8 +315,7 @@ namespace djinni
 
         using Boxed = Optional;
 
-        static CppType toCpp(JNIEnv* jniEnv, JniType j)
-        {
+        static CppType toCpp(JNIEnv* jniEnv, JniType j) {
             if (j) {
                 return T::Boxed::toCpp(jniEnv, j);
             } else {
@@ -324,10 +323,15 @@ namespace djinni
             }
         }
 
-        static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const OptionalType<typename T::CppType> &c)
-        {
-            return c ? T::Boxed::fromCpp(jniEnv, *c) : LocalRef<JniType>{};
+        static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const OptionalType<typename T::CppType>& c) {
+            return c ? T::Boxed::fromCpp(jniEnv, *c) : LocalRef<JniType>{ };
         }
+
+        // No idea why this overload breaks CI bazel build.
+        // static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, OptionalType<typename T::CppType>&& c) {
+        //     return c ? T::Boxed::fromCpp(jniEnv, std::move(*c)) : LocalRef<JniType>{ };
+        // }
+
 
         // fromCpp used for nullable shared_ptr
         template <typename C = T>
@@ -568,7 +572,7 @@ namespace djinni
         }
     };
 
-    // 
+    //
     template<typename CPP_PROTO, typename JAVA_PROTO, typename JAVA_SERIALIZER = GpbMessageLiteSerializer>
     class Protobuf {
     public:
@@ -603,10 +607,10 @@ namespace djinni
             [[maybe_unused]]
             bool success = ret.ParseFromArray(ptr.get(), static_cast<int>(length));
             assert(success);
-            
+
             return ret;
         }
-        
+
         static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const CppType& c)
         {
             // Serialize to C++ vector
@@ -653,7 +657,7 @@ namespace djinni
 
         static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const CppType& c)
         {
-            auto j = LocalRef<JniType>(jniEnv, 
+            auto j = LocalRef<JniType>(jniEnv,
                 jniEnv->NewObjectArray(static_cast<jsize>(c.size()), JniClass<Array>::get().clazz.get(), nullptr));
             for(size_t i = 0; i < c.size(); ++i) {
                 auto je = T::Boxed::fromCpp(jniEnv, c[i]);

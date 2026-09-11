@@ -49,10 +49,12 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
         case ImportRef(arg) => hpp.add("#include " + arg)
         case DeclRef(decl, Some(spec.cppNamespace)) => hppFwds.add(decl)
         case DeclRef(_, _) =>
+        case _ =>
       }
       for(r <- marshal.cppReferences(m, name, forwardDeclareOnly)) r match {
         case ImportRef(arg) => cpp.add("#include " + arg)
         case DeclRef(_, _) =>
+        case _ =>
       }
     }
   }
@@ -224,6 +226,11 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
         // Field definitions.
         for (f <- r.fields) {
           writeDoc(w, f.doc)
+          if (spec.swiftOutFolder.isDefined && params.isEmpty && !r.ext.cpp && new SwiftMarshal(spec).needsRecordProperty(f)) {
+            w.wl("#if defined(__clang__)")
+            w.wl("__attribute__((swift_name(\"" + new SwiftMarshal(spec).nativeField(f.ident) + "\")))")
+            w.wl("#endif")
+          }
           w.wl(marshal.fieldType(f.ty) + " " + idCpp.field(f.ident) + ";")
         }
 

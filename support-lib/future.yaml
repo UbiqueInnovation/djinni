@@ -40,3 +40,12 @@ ts:
   typename: 'Promise'
   module: ''
   generic: true
+swift:
+  typename: 'DJFuture'
+  module: 'DjinniSupport'
+  translator: 'FutureMarshaller'
+  translator.module: 'DjinniSupport'
+  generic: true
+swiftxx:
+  translator: '::djinni::swift::FutureAdaptor'
+  header: '"$Future_swift.hpp"'
