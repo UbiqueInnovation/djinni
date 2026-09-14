@@ -179,7 +179,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       javaAnnotationHeader.foreach(w.wl)
 
       // if no static and no cpp will use interface instead of abstract class
-      val genJavaInterface = spec.javaGenInterface && !statics.nonEmpty && !i.ext.cpp
+      val genJavaInterface = (spec.javaGenInterface || spec.javaGenerateInterfaces) && !statics.nonEmpty && !i.ext.cpp
       val classOrInterfaceDesc = if (genJavaInterface) "interface" else "abstract class";
       val methodPrefixDesc = if (genJavaInterface) "" else "public abstract ";
 
@@ -489,6 +489,8 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           case "double" => w.wl(s"this.${idJava.field(f.ident)} = in.readDouble();")
           case _ => throw new AssertionError("Unreachable")
         }
+        case e if marshal.isEnumFlags(e) =>
+          w.wl(s"this.${idJava.field(f.ident)} = (${marshal.fieldType(f.ty)})in.readSerializable();")
         case df: MDef => df.defType match {
           case DRecord => w.wl(s"this.${idJava.field(f.ident)} = new ${marshal.typename(f.ty)}(in);")
           case DEnum => w.wl(s"this.${idJava.field(f.ident)} = ${marshal.typename(f.ty)}.values()[in.readInt()];")
@@ -505,7 +507,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
         }
         case MSet =>  {
           val collectionTypeName = marshal.typename(f.ty).replaceFirst("HashSet<(.*)>", "$1")
-          w.wl(s"ArrayList<${collectionTypeName}> ${idJava.field(f.ident)}Temp = new ArrayList<${collectionTypeName}>();")
+          w.wl(s"java.util.ArrayList<${collectionTypeName}> ${idJava.field(f.ident)}Temp = new java.util.ArrayList<${collectionTypeName}>();")
           w.wl(s"in.readList(${idJava.field(f.ident)}Temp, getClass().getClassLoader());")
           w.wl(s"this.${idJava.field(f.ident)} = new ${marshal.typename(f.ty)}(${idJava.field(f.ident)}Temp);")
         }
@@ -557,6 +559,8 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           case "double" => w.wl(s"out.writeDouble(this.${idJava.field(f.ident)});")
           case _ => throw new AssertionError("Unreachable")
         }
+        case e if marshal.isEnumFlags(e) =>
+          w.wl(s"out.writeSerializable(this.${idJava.field(f.ident)});")
         case df: MDef => df.defType match {
           case DRecord => w.wl(s"this.${idJava.field(f.ident)}.writeToParcel(out, flags);")
           case DEnum => w.wl(s"out.writeInt(this.${idJava.field(f.ident)}.ordinal());")
@@ -572,7 +576,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
         }
         case MSet => {
           val collectionTypeName = marshal.typename(f.ty).replaceFirst("HashSet<(.*)>", "$1")
-          w.wl(s"out.writeList(new ArrayList<${collectionTypeName}>(this.${idJava.field(f.ident)}));")
+          w.wl(s"out.writeList(new java.util.ArrayList<${collectionTypeName}>(this.${idJava.field(f.ident)}));")
         }
         case MMap => w.wl(s"out.writeMap(this.${idJava.field(f.ident)});")
         case MOptional => {

@@ -23,7 +23,16 @@ This file only covers the parts that have been changed.  Please see the
 ![Bazel Build](https://github.com/Snapchat/djinni/workflows/Build%20and%20Test/badge.svg)
 
 Both the Djinni code generator and test suite are built with Bazel. You can use
-either plain Bazel or [Bazelisk](https://github.com/bazelbuild/bazelisk).
+either Bazel 9.2.0 or [Bazelisk](https://github.com/bazelbuild/bazelisk), which
+reads the pinned version from `.bazelversion`. Dependencies use Bzlmod
+(`MODULE.bazel`); the old `WORKSPACE` setup is no longer supported.
+
+Run `bash ci/bazel.sh` to check that the generator, packaged executable, and
+external-module build produce identical C++ output. CI runs this check, verifies
+generated sources, and runs the Java/JNI suite on GitHub-hosted Linux and macOS
+runners, plus the Objective-C suite on macOS. Set `BAZEL_EXECUTABLE` to use a different Bazel executable.
+See [external-test](external-test/README.md) for consuming Djinni from another
+Bazel module.
 
 ### Building and running the test suite
 
@@ -34,8 +43,9 @@ to build and run Objective-C and Java tests.
 
 ### Building and running the mobile example apps
 
-The Android example app can be build with bazel: `bazel build
-//examples:android-app`, and then install to a device with `adb install
+Set `ANDROID_HOME` to your Android SDK and `ANDROID_NDK_HOME` to an NDK 25b or
+newer installation. Build the Android example app with `bazel build
+--config=android //examples:android-app`, and then install to a device with `adb install
 bazel-bin/examples/android-app.apk`
 
 The iOS example app are built with Xcode. Simply open the project in Xcode and
@@ -49,7 +59,7 @@ You can load the project via Bazel
 - Configure the bazel binary. If you use Bazelisk, set it as the binary in the IDEA bazel settings.
 - In Intellij, import a new Bazel project.
     - Workspace directory: `/Users/$HOME/path-to-djinni-directory`
-    - Import project view file: `WORKSPACE/bzl/ide/djinni.bazelproject`
+    - Import project view file: `bzl/ide/djinni.bazelproject`
 - Similarly you can also use CLion if you wish to edit the C++ code
     - You can set up any of the cc_* targets after importing the workspace.
 

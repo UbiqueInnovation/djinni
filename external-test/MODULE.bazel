@@ -1,0 +1,11 @@
+module(name = "djinni_external_test")
+
+bazel_dep(name = "snap_djinni", version = "0.0.0", repo_name = "djinni")
+local_path_override(module_name = "snap_djinni", path = "..")
+
+# Scala toolchain settings belong to the root module.
+bazel_dep(name = "rules_scala", version = "7.3.0")
+scala_config = use_extension("@rules_scala//scala/extensions:config.bzl", "scala_config")
+scala_config.settings(scala_version = "2.11.12")
+scala_deps = use_extension("@rules_scala//scala/extensions:deps.bzl", "scala_deps")
+scala_deps.scala()

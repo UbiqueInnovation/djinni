@@ -1,0 +1,35 @@
+name: Bazel
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ runner.os }}
+          repository-cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+      - run: bash ci/bazel.sh
+      - run: bash ci/generate.sh
+      - run: bazel query //...
+      - run: bazel test //test-suite:djinni-java-tests --test_output=errors
+      - if: runner.os == 'macOS'
+        run: bazel test //test-suite:djinni-objc-tests --test_output=errors

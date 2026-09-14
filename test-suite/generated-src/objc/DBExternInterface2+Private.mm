@@ -5,6 +5,7 @@
 #import "DBExternInterface2.h"
 #import "DBExternRecordWithDerivings+Private.h"
 #import "DBTestHelpers+Private.h"
+#import "DJIMarshal+Private.h"
 #import "DJIObjcWrapperCache+Private.h"
 #include <stdexcept>
 

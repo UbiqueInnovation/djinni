@@ -7,6 +7,7 @@
 #import "DBSecondListener+Private.h"
 #import "DJICppWrapperCache+Private.h"
 #import "DJIError.h"
+#import "DJIMarshal+Private.h"
 #include <exception>
 #include <stdexcept>
 #include <utility>

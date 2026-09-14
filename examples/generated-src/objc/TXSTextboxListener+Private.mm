@@ -3,6 +3,7 @@
 
 #import "TXSTextboxListener+Private.h"
 #import "TXSTextboxListener.h"
+#import "DJIMarshal+Private.h"
 #import "DJIObjcWrapperCache+Private.h"
 #import "TXSItemList+Private.h"
 #include <stdexcept>

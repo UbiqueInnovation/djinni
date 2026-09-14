@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 
 /** Record containing constants */
+NS_SWIFT_SENDABLE
 @interface DBConstants : NSObject
 - (nonnull instancetype)init NS_DESIGNATED_INITIALIZER;
 + (nonnull instancetype)constants;

@@ -5,7 +5,7 @@ namespace testsuite {
 using namespace djinni;
 
 class DataRefTestCpp : public ::testsuite::DataRefTest {
-    DataRef _data;
+    DataRef _data{0};
 public:
     void sendData(const DataRef& data) override {
         _data = data;
@@ -16,7 +16,8 @@ public:
     }
 
     void sendMutableData(const DataRef& data) override {
-        auto buf = data.mutableBuf();
+        auto mutableData = data;
+        auto buf = mutableData.mutableBuf();
         std::reverse(buf, buf + data.len());
     }
 

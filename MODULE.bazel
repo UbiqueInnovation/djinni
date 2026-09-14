@@ -1,0 +1,43 @@
+module(name = "snap_djinni", version = "0.0.0")
+
+# Register the Apple C++ toolchain before rules_cc for Objective-C support.
+bazel_dep(name = "apple_support", version = "2.8.2")
+bazel_dep(name = "rules_scala", version = "7.3.0", repo_name = "io_bazel_rules_scala")
+bazel_dep(name = "rules_jvm_external", version = "7.1")
+bazel_dep(name = "rules_java", version = "9.9.0")
+bazel_dep(name = "rules_cc", version = "0.2.22")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "protobuf", version = "34.0.bcr.1", repo_name = "com_google_protobuf")
+
+scala_config = use_extension("@io_bazel_rules_scala//scala/extensions:config.bzl", "scala_config")
+scala_config.settings(scala_version = "2.11.12")
+
+scala_deps = use_extension("@io_bazel_rules_scala//scala/extensions:deps.bzl", "scala_deps")
+scala_deps.scala()
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    name = "maven_djinni",
+    artifacts = [
+        "androidx.annotation:annotation-jvm:1.9.1",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "junit:junit:4.12",
+        "org.scala-lang.modules:scala-parser-combinators_2.11:1.0.1",
+        "org.yaml:snakeyaml:1.15",
+        "com.github.scopt:scopt_2.11:3.2.0",
+        "io.reactivex.rxjava2:rxjava:2.2.21",
+    ],
+    repositories = ["https://repo.maven.apache.org/maven2", "https://maven.google.com"],
+)
+use_repo(maven, "maven_djinni")
+
+# These toolchains are only needed by this repository's tests and examples.
+bazel_dep(name = "rules_apple", version = "5.0.0", repo_name = "build_bazel_rules_apple", dev_dependency = True)
+bazel_dep(name = "rules_kotlin", version = "2.4.10", repo_name = "io_bazel_rules_kotlin", dev_dependency = True)
+bazel_dep(name = "rules_android", version = "0.7.3", dev_dependency = True)
+bazel_dep(name = "emsdk", version = "6.0.9", dev_dependency = True)
+bazel_dep(name = "rules_android_ndk", version = "0.1.5", dev_dependency = True)
+
+android_ndk = use_extension("@rules_android_ndk//:extension.bzl", "android_ndk_repository_extension", dev_dependency = True)
+use_repo(android_ndk, "androidndk")

@@ -8,6 +8,7 @@
  * (Second line of multi-line documentation.
  *   Indented third line of multi-line documentation.)
  */
+NS_SWIFT_SENDABLE
 @interface DBEmptyRecord : NSObject
 - (nonnull instancetype)init NS_DESIGNATED_INITIALIZER;
 + (nonnull instancetype)emptyRecord;

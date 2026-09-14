@@ -6,6 +6,7 @@
 #import <Foundation/Foundation.h>
 
 /** This file tests YAML dumped by Djinni can be parsed back in */
+NS_SWIFT_SENDABLE
 @interface DBExternRecordWithDerivings : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;

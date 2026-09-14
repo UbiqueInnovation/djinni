@@ -4,6 +4,7 @@
 #import <Foundation/Foundation.h>
 
 /** Record for use in constants */
+NS_SWIFT_SENDABLE
 @interface DBConstantRecord : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;

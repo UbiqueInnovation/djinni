@@ -3,6 +3,7 @@
 
 #import "DBConstantWithEnum+Private.h"
 #import "DBConstantEnum+Private.h"
+#import "DJIMarshal+Private.h"
 #include <cassert>
 
 namespace djinni_generated {

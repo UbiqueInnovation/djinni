@@ -44,7 +44,7 @@ public class RecordWithFlags implements android.os.Parcelable {
     };
 
     public RecordWithFlags(android.os.Parcel in) {
-        this.mAccess = AccessFlags.values()[in.readInt()];
+        this.mAccess = (EnumSet<AccessFlags>)in.readSerializable();
     }
 
     @Override
@@ -54,7 +54,7 @@ public class RecordWithFlags implements android.os.Parcelable {
 
     @Override
     public void writeToParcel(android.os.Parcel out, int flags) {
-        out.writeInt(this.mAccess.ordinal());
+        out.writeSerializable(this.mAccess);
     }
 
 }

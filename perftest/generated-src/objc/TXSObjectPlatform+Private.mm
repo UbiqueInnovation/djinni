@@ -3,6 +3,7 @@
 
 #import "TXSObjectPlatform+Private.h"
 #import "TXSObjectPlatform.h"
+#import "DJIMarshal+Private.h"
 #import "DJIObjcWrapperCache+Private.h"
 #include <stdexcept>
 

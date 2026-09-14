@@ -1,1 +1,5 @@
-build --cxxopt=-std=c++17 --incompatible_java_common_parameters=false
+build --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
+build:android --android_platforms=//:android_arm64
+build:android --extra_toolchains=@androidndk//:all
+build:android --tool_java_language_version=17
+build:android --tool_java_runtime_version=remotejdk_17

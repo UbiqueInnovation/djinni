@@ -1,5 +1,7 @@
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("@rules_java//java:defs.bzl", "java_library")
+load("@rules_android//rules:rules.bzl", "android_binary", "android_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
 
 cc_library(
@@ -7,7 +9,7 @@ cc_library(
     srcs = glob([
         "generated-src/cpp/*.cpp",
         "handwritten-src/cpp/*.cpp",
-    ]),
+    ], allow_empty = True),
     hdrs = glob([
         "generated-src/cpp/*.hpp",
         "handwritten-src/cpp/*.hpp",

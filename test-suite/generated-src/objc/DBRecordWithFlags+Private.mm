@@ -3,6 +3,7 @@
 
 #import "DBRecordWithFlags+Private.h"
 #import "DBAccessFlags+Private.h"
+#import "DJIMarshal+Private.h"
 #include <cassert>
 
 namespace djinni_generated {

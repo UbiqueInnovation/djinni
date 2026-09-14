@@ -4,6 +4,7 @@
 #import "DBExternRecordWithDerivings+Private.h"
 #import "DBColor+Private.h"
 #import "DBRecordWithDerivings+Private.h"
+#import "DJIMarshal+Private.h"
 #include <cassert>
 
 namespace djinni_generated {

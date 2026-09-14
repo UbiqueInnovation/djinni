@@ -4,6 +4,7 @@
 #import <Foundation/Foundation.h>
 
 /** Record returned by a client */
+NS_SWIFT_SENDABLE
 @interface DBClientReturnedRecord : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;
