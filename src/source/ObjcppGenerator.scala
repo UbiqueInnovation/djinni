@@ -65,7 +65,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
 
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
     val refs = new ObjcRefs()
-    i.methods.map(m => {
+    i.allMethods.map(m => {
       m.params.map(p => refs.find(p.ty))
       m.ret.foreach(refs.find)
     })
@@ -73,8 +73,15 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       refs.find(c.ty)
     })
 
+    i.descendants.foreach { d =>
+      refs.find(d)
+      refs.body.add("#import " + objcMarshal.include(d.name))
+    }
     val self = objcMarshal.typename(ident, i)
     val cppSelf = cppMarshal.fqTypename(ident, i)
+    val cacheCallback = i.children.nonEmpty && i.ext.objc && !i.ext.cpp && spec.cppNnType.isEmpty
+    if (i.children.nonEmpty && i.ext.cpp && !i.ext.objc) refs.body.add("#import <objc/runtime.h>")
+    val cppRefHandle = "_cppRefHandle" + (if (i.base.nonEmpty) "_" + idObjc.ty(ident) else "")
 
     refs.privHeader.add("#include <memory>")
     refs.privHeader.add("!#include " + q(spec.objcppIncludeCppPrefix + spec.cppFileIdentStyle(ident) + "." + spec.cppHeaderExt))
@@ -115,6 +122,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           w.wl
           w.wl(s"using Boxed = $helperClass;")
           w.wl
+          if (i.ext.cpp && i.bases.nonEmpty) w.wl("static Class cppProxyClass();")
           w.wl(s"static CppType toCpp(ObjcType objc);")
           w.wl(s"static ObjcType fromCppOpt(const CppOptType& cpp);")
           w.wl(s"static ObjcType fromCpp(const CppType& cpp) { return fromCppOpt(cpp); }")
@@ -126,7 +134,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       w.wl
     }, true)
 
-    val hasStaticMethod = i.methods.exists(_.static);
+    val hasStaticMethod = i.allMethods.exists(_.static);
 
     // Add user include file if defined
     spec.objcppFunctionPrologueFile.foreach(x=>refs.body.add("#include " + q(x)))
@@ -173,17 +181,17 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         w.wl("@end")
         w.wl
         w.wl(s"@implementation $objcSelf {")
-        w.wl(s"    ::djinni::CppProxyCache::Handle<std::shared_ptr<$cppSelf>> _cppRefHandle;")
+        w.wl(s"    ::djinni::CppProxyCache::Handle<std::shared_ptr<$cppSelf>> ${cppRefHandle};")
         w.wl("}")
         w.wl
         w.wl(s"- (id)initWithCpp:(const std::shared_ptr<$cppSelf>&)cppRef")
         w.braced {
           w.w("if (self = [super init])").braced {
-            w.wl("_cppRefHandle.assign(cppRef);")
+            w.wl(s"${cppRefHandle}.assign(cppRef);")
           }
           w.wl("return self;")
         }
-        for (m <- i.methods.filter(m => !m.static || m.lang.objc)) {
+        for (m <- i.allMethods.filter(m => !m.static || m.lang.objc)) {
           w.wl
           writeObjcFuncDecl(m, w)
           w.braced {
@@ -203,7 +211,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                 }
               })
               val ret = m.ret.fold("")(_ => "auto objcpp_result_ = ")
-              val call = ret + (if (!m.static) "_cppRefHandle.get()->" else cppSelf + "::") + idCpp.method(m.ident) + "("
+              val call = ret + (if (!m.static) s"${cppRefHandle}.get()->" else cppSelf + "::") + idCpp.method(m.ident) + "("
               writeAlignedCall(w, call, m.params, ")", p => objcppMarshal.toCpp(p.ty, idObjc.local(p.ident.name)))
 
               w.wl(";")
@@ -237,7 +245,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
             w.wl(s"friend class ${objcppMarshal.helperClassWithNs(ident)};")
             w.wlOutdent("public:")
             w.wl("using ObjcProxyBase::ObjcProxyBase;")
-            for (m <- i.methods) {
+            for (m <- i.allMethods) {
               val ret = cppMarshal.fqReturnType(m.ret)
               val params = m.params.map(p => cppMarshal.fqParamType(p.ty) + " c_" + idCpp.local(p.ident))
               w.wl(s"$ret ${idCpp.method(m.ident)}${params.mkString("(", ", ", ")")} override").braced {
@@ -270,8 +278,14 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
 
       w.wl
       wrapNamespace(w, spec.objcppNamespace, w => {
+        if (i.ext.cpp && i.bases.nonEmpty)
+          w.wl(s"Class $helperClass::cppProxyClass() { return [$objcSelf class]; }")
         // ObjC-to-C++ coversion
         w.wl(s"auto $helperClass::toCpp(ObjcType objc) -> CppType").braced {
+          if (cacheCallback) {
+            w.wl(s"return ::djinni::get_cached_objc_proxy<$cppSelf>(objc, [&]() -> CppType {")
+            w.increase()
+          }
           // Handle null
           w.w("if (!objc)").braced {
             if (spec.cppNnType.isEmpty) {
@@ -280,15 +294,39 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
               w.wl(s"""throw std::invalid_argument("$helperClass::toCpp requires non-nil object");""")
             }
           }
+          if (i.children.nonEmpty && i.ext.cpp && !i.ext.objc) {
+            w.wl("const Class concreteClass = object_getClass(objc);")
+            for (d <- i.descendants) {
+              val helper = objcppMarshal.helperClassWithNs(d.name)
+              w.w(s"if (concreteClass == $helper::cppProxyClass())").braced {
+                w.wl(s"return $helper::toCpp(($helper::ObjcType)objc);")
+              }
+            }
+          }
+          for (d <- i.children) {
+            val child = objcMarshal.typename(d.name, d.body)
+            val test = if (useProtocol(i.ext, spec)) s"[(id)objc conformsToProtocol:@protocol($child)]" else s"[(id)objc isKindOfClass:[$child class]]"
+            w.w(s"if ($test)").braced {
+              for (descendant <- d.body.asInstanceOf[Interface].descendants) {
+                val name = objcMarshal.typename(descendant.name, descendant.body)
+                val matchType = if (useProtocol(i.ext, spec)) s"[(id)objc conformsToProtocol:@protocol($name)]" else s"[(id)objc isKindOfClass:[$name class]]"
+                val helper = objcppMarshal.helperClassWithNs(descendant.name)
+                w.w(s"if ($matchType)").braced {
+                  w.wl(s"return $helper::toCpp(($helper::ObjcType)objc);")
+                }
+              }
+              w.wl(s"return ${objcppMarshal.helperClassWithNs(d.name)}::toCpp((${objcppMarshal.helperClassWithNs(d.name)}::ObjcType)objc);")
+            }
+          }
           if (i.ext.cpp && !i.ext.objc) {
             if (!spec.objcGenProtocol) {
               // C++ only. In this case we generate a class instead of a protocol, so
               // we don't have to do any casting at all, just access cppRef directly.
-              w.wl("return " + nnCheck("objc->_cppRefHandle.get()") + ";")
-              //w.wl(s"return ${spec.cppNnCheckExpression.getOrElse("")}(objc->_cppRefHandle.get());")
+              w.wl("return " + nnCheck(s"objc->${cppRefHandle}.get()") + ";")
+              //w.wl(s"return ${spec.cppNnCheckExpression.getOrElse("")}(objc->${cppRefHandle}.get());")
             } else {
               // C++ only with protocol interface. Cast to interface type then access cppRef.
-              val getProxyExpr = s"(($objcSelf*)objc)->_cppRefHandle.get()"
+              val getProxyExpr = s"(($objcSelf*)objc)->${cppRefHandle}.get()"
               w.wl(s"return ${nnCheck(getProxyExpr)};")
             }
           } else if (i.ext.cpp || i.ext.objc) {
@@ -296,7 +334,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
             if (i.ext.cpp) {
               // If it could be implemented in C++, we might have to unwrap a proxy object.
               w.w(s"if ([(id)objc isKindOfClass:[$objcSelf class]])").braced {
-                val getProxyExpr = s"(($objcSelf*)objc)->_cppRefHandle.get()"
+                val getProxyExpr = s"(($objcSelf*)objc)->${cppRefHandle}.get()"
                 w.wl(s"return ${nnCheck(getProxyExpr)};")
               }
             }
@@ -306,12 +344,21 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
             // Neither ObjC nor C++.  Unusable, but generate compilable code.
             w.wl("DJINNI_UNIMPLEMENTED(@\"Interface not implementable in any language.\");")
           }
+          if (cacheCallback) {
+            w.decrease()
+            w.wl("});")
+          }
         }
         w.wl
         w.wl(s"auto $helperClass::fromCppOpt(const CppOptType& cpp) -> ObjcType").braced {
           // Handle null
           w.w("if (!cpp)").braced {
             w.wl("return nil;")
+          }
+          for (d <- i.descendants) {
+            w.w(s"if (auto derived = std::dynamic_pointer_cast<${cppMarshal.fqTypename(d.name, d.body)}>(cpp))").braced {
+              w.wl(s"return ${objcppMarshal.helperClassWithNs(d.name)}::fromCppOpt(derived);")
+            }
           }
           if (i.ext.objc && !i.ext.cpp) {
             // ObjC only. In this case we *must* unwrap a proxy object - the dynamic_cast will

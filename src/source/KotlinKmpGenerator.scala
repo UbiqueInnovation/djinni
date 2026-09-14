@@ -22,7 +22,16 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
   private def syntheticIdent(name: String): Ident = Ident(name, syntheticFile, Loc(syntheticFile, 0, 0))
 
+  private val nativeHandleType = kmpBridgePrefix + "DjinniNativeHandle"
+
   override def generate(idl: Seq[TypeDecl]) {
+    if (spec.multipleInheritance) spec.kotlinKmpCommonOutFolder.foreach { folder =>
+      writeKotlinFile(folder, nativeHandleType + ".kt", "interface bridge", w => {
+        w.w(s"internal interface $nativeHandleType").braced {
+          w.wl("val djinniNativeHandle: Any")
+        }
+      })
+    }
     for (td <- selectDecls(idl)) {
       td.body match {
         case r: Record => generateRecord(td, r)
@@ -148,7 +157,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     (iosActualTypeNameAndImport(td)._2.toSeq ++ iosPlatformImportsForTypes(r.fields.map(_.ty.resolved))).distinct.sorted
 
   private def iosPlatformImportsForInterface(td: TypeDecl, i: Interface): Seq[String] = {
-    val methodTypes = i.methods.flatMap { m =>
+    val methodTypes = i.allMethods.flatMap { m =>
       m.params.map(_.ty.resolved) ++ m.ret.map(_.resolved).toSeq
     }
     (iosActualTypeNameAndImport(td)._2.toSeq ++ iosPlatformImportsForTypes(methodTypes ++ i.consts.map(_.ty.resolved))).distinct.sorted
@@ -259,7 +268,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   )
 
   private def conversionImportsForInterface(i: Interface): Seq[String] = {
-    val methodTypes = i.methods.flatMap { m =>
+    val methodTypes = i.allMethods.flatMap { m =>
       m.params.map(_.ty.resolved) ++ m.ret.map(_.resolved).toSeq
     }
     conversionImportsForTypes(methodTypes ++ i.consts.map(_.ty.resolved))
@@ -484,15 +493,53 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     }
     val hasStatics = i.methods.exists(_.static) || i.consts.nonEmpty
     val kmpImplementable = objcIsProtocol && i.ext.java && i.ext.objc
-    val classKind = !kmpImplementable || hasStatics
+    def root(body: Interface): Interface = body.baseInterface.map(root).getOrElse(body)
+    def familyHasStatics(body: Interface): Boolean = body.consts.nonEmpty || body.methods.exists(_.static) || body.children.exists(d => familyHasStatics(d.body.asInstanceOf[Interface]))
+    val classKind = !spec.multipleInheritance && (!kmpImplementable || familyHasStatics(root(i)))
+    val open = if (i.children.nonEmpty) "open " else ""
+    val baseName = i.base.map(b => kmpType(b.resolved))
+    val baseDecl = if (i.bases.isEmpty) "" else i.bases.map(b => kmpType(b.resolved)).mkString(" : ", ", ", "")
+    val baseConstructor = baseName.map(" : " + _ + "(nativeHandle)").getOrElse("")
     val conversionImports = conversionImportsForInterface(i)
+
+    def writeActualCompanion(w: IndentWriter, staticHost: String, isAndroid: Boolean): Unit = {
+      if (i.consts.nonEmpty || i.methods.exists(_.static)) {
+        w.wl
+        w.wl("actual companion object").braced {
+          for (c <- i.consts) {
+            val constType = kmpFieldType(c.ty.resolved)
+            val platformConst = s"$staticHost.${idJava.const(c.ident)}"
+            w.wl(s"actual val ${idJava.const(c.ident)}: $constType")
+            w.wl(s"    get() = ${fromPlatformExpr(c.ty.resolved, platformConst, isAndroid = isAndroid)}")
+          }
+          for (m <- i.methods if m.static) {
+            w.wl
+            val params = methodParams(m)
+            val retType = kmpReturnType(m.ret)
+            val retSuffix = if (retType == "Unit") "" else s": $retType"
+            w.wl(s"actual fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
+            w.increase()
+            val args = m.params.map(p => toPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = isAndroid))
+            val call = s"$staticHost.${idJava.method(m.ident)}(${args.mkString(", ")})"
+            if (retType == "Unit") {
+              w.wl(call)
+            } else {
+              w.wl(s"val result = $call")
+              w.wl(s"return ${fromPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = isAndroid)}")
+            }
+            w.decrease()
+            w.wl("}")
+          }
+        }
+      }
+    }
 
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
         if (classKind) {
-          w.w(s"expect class $name$typeParams constructor(nativeHandle: Any)")
+          w.w(s"expect ${open}class $name$typeParams constructor(nativeHandle: Any)$baseDecl")
         } else {
-          w.w(s"expect interface $name$typeParams")
+          w.w(s"expect interface $name$typeParams$baseDecl")
         }
         w.braced {
           for (m <- i.methods if !m.static) {
@@ -502,7 +549,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             val retSuffix = if (retType == "Unit") "" else s": $retType"
             w.wl(s"fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix")
           }
-          if (classKind && (i.consts.nonEmpty || i.methods.exists(_.static))) {
+          if ((classKind || spec.multipleInheritance) && (i.consts.nonEmpty || i.methods.exists(_.static))) {
             w.wl
             w.wl("companion object").braced {
               for (c <- i.consts) {
@@ -530,13 +577,13 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.wl(s"import $platformTypeBaseFq")
         w.wl
         if (classKind) {
-          w.wl(s"actual class $name$typeParams actual public constructor(")
+          w.wl(s"actual ${open}class $name$typeParams actual public constructor(")
           w.increase()
           w.wl("nativeHandle: Any,")
           w.decrease()
-          w.wl(") {")
+          w.wl(s")$baseConstructor {")
           w.increase()
-          w.wl("internal val nativeHandle: Any = nativeHandle")
+          if (i.base.isEmpty) w.wl("internal val nativeHandle: Any = nativeHandle")
           w.wl(s"private val native = nativeHandle as $platformType")
           for (m <- i.methods if !m.static) {
             w.wl
@@ -556,42 +603,14 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             w.decrease()
             w.wl("}")
           }
-          if (i.consts.nonEmpty || i.methods.exists(_.static)) {
-            w.wl
-            w.wl("actual companion object").braced {
-              for (c <- i.consts) {
-                val constType = kmpFieldType(c.ty.resolved)
-                val platformConst = s"$platformTypeBase.${idJava.const(c.ident)}"
-                w.wl(s"actual val ${idJava.const(c.ident)}: $constType")
-                w.wl(s"    get() = ${fromPlatformExpr(c.ty.resolved, platformConst, isAndroid = true)}")
-              }
-              for (m <- i.methods if m.static) {
-                w.wl
-                val params = methodParams(m)
-                val retType = kmpReturnType(m.ret)
-                val retSuffix = if (retType == "Unit") "" else s": $retType"
-                w.wl(s"actual fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
-                w.increase()
-                val args = m.params.map(p => toPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = true))
-                val call = s"$platformTypeBase.${idJava.method(m.ident)}(${args.mkString(", ")})"
-                if (retType == "Unit") {
-                  w.wl(call)
-                } else {
-                  w.wl(s"val result = $call")
-                  w.wl(s"return ${fromPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = true)}")
-                }
-                w.decrease()
-                w.wl("}")
-              }
-            }
-          }
+          writeActualCompanion(w, platformTypeBase, isAndroid = true)
           w.decrease()
           w.wl("}")
           w.wl
           w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = nativeHandle as $platformType")
           w.wl(s"public fun $platformType.asKmp(): $name$typeParams = $name(this)")
         } else {
-          w.wl(s"actual interface $name$typeParams")
+          w.wl(s"actual interface $name$typeParams$baseDecl")
           w.braced {
             for (m <- i.methods if !m.static) {
               w.wl
@@ -600,13 +619,15 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
               val retSuffix = if (retType == "Unit") "" else s": $retType"
               w.wl(s"actual fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix")
             }
+            if (spec.multipleInheritance) writeActualCompanion(w, platformTypeBase, isAndroid = true)
           }
           w.wl
-          val androidIsInterface = spec.javaGenInterface && !hasStatics && !i.ext.cpp
+          val androidIsInterface = spec.multipleInheritance || (spec.javaGenInterface && !hasStatics && !i.ext.cpp)
           val platformProxySuper = if (androidIsInterface) platformType else platformType + "()"
-          w.wl(s"private class ${name}PlatformWrapper$typeParams(internal val nativeHandle: $platformType) : $name$typeParams")
+          w.wl(s"private class ${name}PlatformWrapper$typeParams(internal val nativeHandle: $platformType) : $name$typeParams" + (if (spec.multipleInheritance) s", $nativeHandleType" else ""))
           w.braced {
-            for (m <- i.methods if !m.static) {
+            if (spec.multipleInheritance) w.wl("override val djinniNativeHandle: Any get() = nativeHandle")
+            for (m <- i.allMethods if !m.static) {
               w.wl
               val params = methodParams(m)
               val retType = kmpReturnType(m.ret)
@@ -626,40 +647,46 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             }
           }
           w.wl
-          w.wl(s"private class ${name}PlatformProxy$typeParams(private val delegate: $name$typeParams) : $platformProxySuper")
-          w.braced {
-            for (m <- i.methods if !m.static) {
-              w.wl
-              val params = platformMethodParams(m, isAndroid = true)
-              val retType = platformReturnType(m.ret, isAndroid = true)
-              val retSuffix = if (retType == "Unit") "" else s": $retType"
-              w.wl(s"override fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
-              w.increase()
-              val args = m.params.map(p => fromPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = true))
-              val call = s"delegate.${idJava.method(m.ident)}(${args.mkString(", ")})"
-              if (retType == "Unit") {
-                w.wl(call)
-              } else {
-                w.wl(s"val result = $call")
-                w.wl(s"return ${toPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = true)}")
+          if (!spec.multipleInheritance || i.ext.java) {
+            w.wl(s"private class ${name}PlatformProxy$typeParams(${if (spec.multipleInheritance) "val" else "private val"} delegate: $name$typeParams) : $platformProxySuper")
+            w.braced {
+              for (m <- i.allMethods if !m.static) {
+                w.wl
+                val params = platformMethodParams(m, isAndroid = true)
+                val retType = platformReturnType(m.ret, isAndroid = true)
+                val retSuffix = if (retType == "Unit") "" else s": $retType"
+                w.wl(s"override fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
+                w.increase()
+                val args = m.params.map(p => fromPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = true))
+                val call = s"delegate.${idJava.method(m.ident)}(${args.mkString(", ")})"
+                if (retType == "Unit") {
+                  w.wl(call)
+                } else {
+                  w.wl(s"val result = $call")
+                  w.wl(s"return ${toPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = true)}")
+                }
+                w.decrease()
+                w.wl("}")
               }
-              w.decrease()
-              w.wl("}")
             }
+            w.wl
           }
-          w.wl
           w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = when (this) {")
-          w.wl(s"    is ${name}PlatformWrapper$typeParams -> this.nativeHandle")
-          w.wl(s"    else -> ${name}PlatformProxy(this)")
+          if (spec.multipleInheritance) w.wl(s"    is $nativeHandleType -> this.djinniNativeHandle as $platformType")
+          else w.wl(s"    is ${name}PlatformWrapper$typeParams -> this.nativeHandle")
+          if (!spec.multipleInheritance || i.ext.java) w.wl(s"    else -> ${name}PlatformProxy(this)")
+          else w.wl("    else -> error(\"This interface must be implemented in C++\")")
           w.wl("}")
-          w.wl(s"public fun $platformType.asKmp(): $name$typeParams = ${name}PlatformWrapper(this)")
+          if (spec.multipleInheritance && i.ext.java)
+            w.wl(s"public fun $platformType.asKmp(): $name$typeParams = if (this is ${name}PlatformProxy$typeParams) this.delegate else ${name}PlatformWrapper(this)")
+          else w.wl(s"public fun $platformType.asKmp(): $name$typeParams = ${name}PlatformWrapper(this)")
         }
       }, extraImports = conversionImports)
     })
 
     spec.kotlinKmpIosOutFolder.foreach(folder => {
       val objcName = kmpObjcName(td)
-      val iosImports = iosPlatformImportsForInterface(td, i)
+      val iosImports = iosPlatformImportsForInterface(td, i) ++ (if (spec.multipleInheritance && hasStatics) Seq(s"$iosModule.${objcMarshal.typename(td.ident, i)}") else Seq.empty)
       writeKotlinFile(folder, s"$name.kt", origin, w => {
         w.wl("import kotlin.experimental.ExperimentalObjCName")
         w.wl("import kotlin.native.ObjCName")
@@ -671,13 +698,13 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         w.wl(s"""@ObjCName("$objcName", exact = true)""")
         val platformType = iosActualTypename(td) + typeParamsUse
         if (classKind) {
-          w.wl(s"actual class $name$typeParams actual public constructor(")
+          w.wl(s"actual ${open}class $name$typeParams actual public constructor(")
           w.increase()
           w.wl("nativeHandle: Any,")
           w.decrease()
-          w.wl(") {")
+          w.wl(s")$baseConstructor {")
           w.increase()
-          w.wl("internal val nativeHandle: Any = nativeHandle")
+          if (i.base.isEmpty) w.wl("internal val nativeHandle: Any = nativeHandle")
           w.wl(s"private val native = nativeHandle as $platformType")
           for (m <- i.methods if !m.static) {
             w.wl
@@ -697,42 +724,14 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             w.decrease()
             w.wl("}")
           }
-          if (i.consts.nonEmpty || i.methods.exists(_.static)) {
-            w.wl
-            w.wl("actual companion object").braced {
-              for (c <- i.consts) {
-                val constType = kmpFieldType(c.ty.resolved)
-                val platformConst = s"${iosActualTypename(td)}.${idJava.const(c.ident)}"
-                w.wl(s"actual val ${idJava.const(c.ident)}: $constType")
-                w.wl(s"    get() = ${fromPlatformExpr(c.ty.resolved, platformConst, isAndroid = false)}")
-              }
-              for (m <- i.methods if m.static) {
-                w.wl
-                val params = methodParams(m)
-                val retType = kmpReturnType(m.ret)
-                val retSuffix = if (retType == "Unit") "" else s": $retType"
-                w.wl(s"actual fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
-                w.increase()
-                val args = m.params.map(p => toPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = false))
-                val call = s"${iosActualTypename(td)}.${idJava.method(m.ident)}(${args.mkString(", ")})"
-                if (retType == "Unit") {
-                  w.wl(call)
-                } else {
-                  w.wl(s"val result = $call")
-                  w.wl(s"return ${fromPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = false)}")
-                }
-                w.decrease()
-                w.wl("}")
-              }
-            }
-          }
+          writeActualCompanion(w, iosActualTypename(td), isAndroid = false)
           w.decrease()
           w.wl("}")
           w.wl
           w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = nativeHandle as $platformType")
           w.wl(s"public fun $platformType.asKmp(): $name$typeParams = $name(this)")
         } else {
-          w.wl(s"actual interface $name$typeParams")
+          w.wl(s"actual interface $name$typeParams$baseDecl")
           w.braced {
             for (m <- i.methods if !m.static) {
               w.wl
@@ -741,11 +740,13 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
               val retSuffix = if (retType == "Unit") "" else s": $retType"
               w.wl(s"actual fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix")
             }
+            if (spec.multipleInheritance) writeActualCompanion(w, objcMarshal.typename(td.ident, i), isAndroid = false)
           }
           w.wl
-          w.wl(s"private class ${name}PlatformWrapper$typeParams(internal val nativeHandle: $platformType) : $name$typeParams")
+          w.wl(s"private class ${name}PlatformWrapper$typeParams(internal val nativeHandle: $platformType) : $name$typeParams" + (if (spec.multipleInheritance) s", $nativeHandleType" else ""))
           w.braced {
-            for (m <- i.methods if !m.static) {
+            if (spec.multipleInheritance) w.wl("override val djinniNativeHandle: Any get() = nativeHandle")
+            for (m <- i.allMethods if !m.static) {
               w.wl
               val params = methodParams(m)
               val retType = kmpReturnType(m.ret)
@@ -765,33 +766,39 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
             }
           }
           w.wl
-          w.wl(s"private class ${name}PlatformProxy$typeParams(private val delegate: $name$typeParams) : NSObject(), $platformType")
-          w.braced {
-            for (m <- i.methods if !m.static) {
-              w.wl
-              val params = platformMethodParams(m, isAndroid = false)
-              val retType = platformReturnType(m.ret, isAndroid = false)
-              val retSuffix = if (retType == "Unit") "" else s": $retType"
-              w.wl(s"override fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
-              w.increase()
-              val args = m.params.map(p => fromPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = false))
-              val call = s"delegate.${idJava.method(m.ident)}(${args.mkString(", ")})"
-              if (retType == "Unit") {
-                w.wl(call)
-              } else {
-                w.wl(s"val result = $call")
-                w.wl(s"return ${toPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = false)}")
+          if (!spec.multipleInheritance || i.ext.objc) {
+            w.wl(s"private class ${name}PlatformProxy$typeParams(${if (spec.multipleInheritance) "val" else "private val"} delegate: $name$typeParams) : NSObject(), $platformType")
+            w.braced {
+              for (m <- i.allMethods if !m.static) {
+                w.wl
+                val params = platformMethodParams(m, isAndroid = false)
+                val retType = platformReturnType(m.ret, isAndroid = false)
+                val retSuffix = if (retType == "Unit") "" else s": $retType"
+                w.wl(s"override fun ${idJava.method(m.ident)}(${params.mkString(", ")})$retSuffix {")
+                w.increase()
+                val args = m.params.map(p => fromPlatformExpr(p.ty.resolved, idJava.local(p.ident), isAndroid = false))
+                val call = s"delegate.${idJava.method(m.ident)}(${args.mkString(", ")})"
+                if (retType == "Unit") {
+                  w.wl(call)
+                } else {
+                  w.wl(s"val result = $call")
+                  w.wl(s"return ${toPlatformExpr(m.ret.get.resolved, resultExpr, isAndroid = false)}")
+                }
+                w.decrease()
+                w.wl("}")
               }
-              w.decrease()
-              w.wl("}")
             }
+            w.wl
           }
-          w.wl
           w.wl(s"public fun $name$typeParams.asPlatform(): $platformType = when (this) {")
-          w.wl(s"    is ${name}PlatformWrapper$typeParams -> this.nativeHandle")
-          w.wl(s"    else -> ${name}PlatformProxy(this)")
+          if (spec.multipleInheritance) w.wl(s"    is $nativeHandleType -> this.djinniNativeHandle as $platformType")
+          else w.wl(s"    is ${name}PlatformWrapper$typeParams -> this.nativeHandle")
+          if (!spec.multipleInheritance || i.ext.objc) w.wl(s"    else -> ${name}PlatformProxy(this)")
+          else w.wl("    else -> error(\"This interface must be implemented in C++\")")
           w.wl("}")
-          w.wl(s"public fun $platformType.asKmp(): $name$typeParams = ${name}PlatformWrapper(this)")
+          if (spec.multipleInheritance && i.ext.objc)
+            w.wl(s"public fun $platformType.asKmp(): $name$typeParams = if (this is ${name}PlatformProxy$typeParams) this.delegate else ${name}PlatformWrapper(this)")
+          else w.wl(s"public fun $platformType.asKmp(): $name$typeParams = ${name}PlatformWrapper(this)")
         }
       }, extraImports = conversionImports ++ iosImports)
     })

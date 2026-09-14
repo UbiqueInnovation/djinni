@@ -136,7 +136,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
     val refs = new JavaRefs()
 
-    i.methods.map(m => {
+    i.allMethods.map(m => {
       m.params.map(p => refs.find(p.ty))
       m.ret.foreach(refs.find)
     })
@@ -171,12 +171,16 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
       javaAnnotationHeader.foreach(w.wl)
 
       // if no static and no cpp will use interface instead of abstract class
-      val genJavaInterface = spec.javaGenInterface && !statics.nonEmpty && !i.ext.cpp
+      def generatesInterface(body: Interface): Boolean =
+        spec.javaGenInterface && !body.ext.cpp && !body.methods.exists(m => m.static) && body.baseInterface.forall(generatesInterface)
+      val genJavaInterface = spec.multipleInheritance || generatesInterface(i)
       val classPrefix = if (genJavaInterface) "interface" else "abstract class"
       val methodPrefix = if (genJavaInterface) "" else "abstract "
       val innerClassAccessibility = if (genJavaInterface) "" else "public "
 
-      w.w(s"$classPrefix $javaClass$typeParamList").braced {
+      val baseClass = if (spec.multipleInheritance && i.bases.nonEmpty) i.bases.map(marshal.typename).mkString(" : ", ", ", "")
+        else i.base.map(b => " : " + marshal.typename(b) + (if (generatesInterface(i.baseInterface.get)) "" else "()")).getOrElse("")
+      w.w(s"$classPrefix $javaClass$typeParamList$baseClass").braced {
         // Implement the interface's static methods as direct calls to the exported cpp functions.
         if (i.consts.nonEmpty || i.methods.exists(_.static)) {
           w.wl
@@ -195,7 +199,24 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
                 idJava.local(p.ident) + ": " + marshal.paramType(p.ty)
               })
               w.wl("@JvmStatic")
-              w.wl("external fun " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ": " + ret)
+              if (spec.multipleInheritance) {
+                val args = m.params.map(p => idJava.local(p.ident)).mkString(", ")
+                w.wl("fun " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ": " + ret + s" = Native.${idJava.method(m.ident)}($args)")
+              } else {
+                w.wl("external fun " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ": " + ret)
+              }
+            }
+          }
+        }
+
+        if (spec.multipleInheritance && statics.nonEmpty) {
+          w.wl
+          w.w("object Native").braced {
+            writeModuleInitializer(w)
+            for (m <- statics) {
+              val params = m.params.map(p => idJava.local(p.ident) + ": " + marshal.paramType(p.ty))
+              w.wl("@JvmStatic")
+              w.wl("external fun " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ": " + marshal.returnType(m.ret))
             }
           }
         }
@@ -229,7 +250,7 @@ class KotlinGenerator(spec: Spec) extends Generator(spec) {
               w.wl("external fun nativeDestroy(nativeRef: Long)")
             }
             // Implement the interface's non-static methods.
-            for (m <- i.methods if !m.static) {
+            for (m <- i.allMethods if !m.static) {
               w.wl
               val ret = marshal.returnType(m.ret)
               val returnSignature = if (ret == "Unit") "" else s": $ret"

@@ -71,6 +71,7 @@ object Main {
     var jniFileIdentStyleOptional: Option[IdentConverter] = None
     var jniBaseLibClassIdentStyleOptional: Option[IdentConverter] = None
     var jniBaseLibIncludePrefix: String = ""
+    var multipleInheritance: Boolean = false
     var jniUseOnLoad: Boolean = false
     var jniFunctionPrologueFile: Option[String] = None
     var cppHeaderOutFolderOptional: Option[File] = None
@@ -186,6 +187,7 @@ object Main {
       opt[String]("kotlin-kmp-objc-name-prefix").valueName("<prefix>").foreach(x => kotlinKmpObjcNamePrefix = Some(x))
         .text("The prefix to apply to @ObjCName annotations for Kotlin KMP bridge types.")
       note("")
+      opt[Boolean]("multiple-inheritance").valueName("<true/false>").text("Generate interface/protocol APIs supporting multiple parents and diamonds").foreach(x => multipleInheritance = x)
       opt[Boolean]("java-gen-interface").valueName("<true/false>").foreach(x => javaGenInterface = x)
         .text("Generate Java interface instead of abstract class.")
       note("")
@@ -400,7 +402,7 @@ object Main {
 
     // Resolve names in IDL file, check types.
     System.out.println("Resolving...")
-    resolver.resolve(meta.defaults, idl) match {
+    resolver.resolve(meta.defaults, idl, multipleInheritance) match {
       case Some(err) =>
         System.err.println(err)
         System.exit(1); return
@@ -492,7 +494,7 @@ object Main {
       objcBaseLibIncludePrefix,
       objcSwiftBridgingHeaderWriter,
       objcSwiftBridgingHeaderName,
-      objcGenProtocol,
+      objcGenProtocol || multipleInheritance,
       objcDisableClassCtor,
       objcClosedEnums,
       objcStrictProtocol,
@@ -518,7 +520,8 @@ object Main {
       yamlOutFolder,
       yamlOutFile,
       yamlPrefix,
-      idlFile.getName.stripSuffix(".djinni"))
+      idlFile.getName.stripSuffix(".djinni"),
+      multipleInheritance)
 
     try {
       val r = generate(idl, outSpec)

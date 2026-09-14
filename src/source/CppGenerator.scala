@@ -336,13 +336,15 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
       refs.find(c.ty, true)
     })
 
+    i.bases.foreach(b => refs.hpp.add("#include " + marshal.include(b.expr.ident.name)))
+    val baseClass = i.bases.map(b => "public " + (if (spec.multipleInheritance) "virtual " else "") + marshal.fqTypename(b.expr.ident.name, i)).mkString(", ")
     val self = marshal.typename(ident, i)
-    val methodNamesInScope = i.methods.map(m => idCpp.method(m.ident))
+    val methodNamesInScope = i.allMethods.map(m => idCpp.method(m.ident))
 
     writeHppFile(ident, origin, refs.hpp, refs.hppFwds, w => {
       writeDoc(w, doc)
       writeCppTypeParams(w, typeParams)
-      w.w(s"class $self").bracedSemi {
+      w.w(s"class $self" + (if (baseClass.isEmpty) "" else " : " + baseClass)).bracedSemi {
         w.wlOutdent("public:")
         // Destructor
         w.wl(s"virtual ~$self() = default;")

@@ -101,6 +101,49 @@ header file to inject whatever code you need there.
 For example you could make it log the method name. Or you could instantiate a
 scoped object to trace the duration of the call.
 
+### Interface inheritance
+
+An interface can extend one parent interface:
+
+```djinni
+base = interface +c {
+    value(): i32;
+}
+
+child = interface +c : base {
+    child_value(): i32;
+}
+```
+
+Implement both methods on `child`. A child can be passed directly to a method
+accepting `base`, without an `as_base()` accessor. Inherited instance methods
+are forwarded by generated proxies, including through several ancestor
+levels. C++, Java, Kotlin, Objective-C protocols/classes (and their Swift
+imports), Kotlin Multiplatform, and TypeScript retain the parent relationship.
+
+Parent and child must use the same implementation-language modifiers. Cycles
+and redeclarations of inherited method or constant names are rejected. This
+supports parents from the same IDL or an `@import`, with no type parameters
+on either interface. Extern YAML interfaces do not contain the method definitions needed to serve as a
+parent. Regenerate the whole hierarchy together so bridges know its child types.
+Static methods and constants remain declared on their owning interface.
+
+Enable multiple parents with `--multiple-inheritance true`:
+
+```djinni
+left = interface +c : base {}
+right = interface +c : base { right_value(): i32; }
+child = interface +c : left, right { child_value(): i32; }
+```
+
+Diamonds share the common ancestor; unrelated parents declaring the same member
+name are rejected. This option changes all generated Java, Kotlin and KMP
+interfaces to interface types and Objective-C interfaces to protocols, with
+static factories on companion/helper types. C++ uses virtual inheritance.
+WebAssembly bridges preserve subtype conversion without Embind base registration.
+Regenerate every language and rebuild consumers together when enabling it;
+default output remains unchanged.
+
 ### Generate all interfaces as ObjC protocols
 
 By default, Djinni only generates interfaces as ObjC `@protocol` when these

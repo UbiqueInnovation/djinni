@@ -276,10 +276,12 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
     val refs = new WasmRefs(ident.name)
     i.consts.foreach(c => refs.find(c.ty))
-    i.methods.foreach(m => {
+    i.allMethods.foreach(m => {
       m.params.foreach(p => refs.find(p.ty))
       m.ret.foreach(refs.find)
     })
+
+    if (spec.multipleInheritance) i.descendants.foreach(d => refs.find(MExpr(d, Seq.empty)))
 
     val cls = withNs(Some(spec.cppNamespace), idCpp.ty(ident))
     val helper = helperClass(ident)
@@ -293,8 +295,14 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
         w.wl(s"using Boxed = $helper;")
         w.wl
         // mashalling
-        w.wl("static CppType toCpp(JsType j) { return _fromJs(j); }")
-        w.wl("static JsType fromCppOpt(const CppOptType& c) { return {_toJs(c)}; }")
+        if (spec.multipleInheritance) {
+          if (i.ext.cpp) w.wl(s"static const char* djinni_private_native_type_tag() { return ${q(withWasmNamespace(idJs.ty(ident.name)))}; }")
+          w.wl("static CppType toCpp(JsType j);")
+          w.wl("static JsType fromCppOpt(const CppOptType& c);")
+        } else {
+          w.wl("static CppType toCpp(JsType j) { return _fromJs(j); }")
+          w.wl("static JsType fromCppOpt(const CppOptType& c) { return {_toJs(c)}; }")
+        }
         w.w("static JsType fromCpp(const CppType& c)").braced {
           if (spec.cppNnType.isEmpty) {
             w.wl(s"""::djinni::checkForNull(c.get(), "$helper::fromCpp");""")
@@ -309,7 +317,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
         w.wl
         // stubs
         if (i.ext.cpp) {
-          for (m <- i.methods.filter(m => !m.static || m.lang.js)) {
+          for (m <- i.allMethods.filter(m => !m.static || m.lang.js)) {
             val selfRef = if (m.static) "" else if (m.params.isEmpty) "const CppType& self" else "const CppType& self, "
             w.w(s"static ${stubRetType(m)} ${idCpp.method(m.ident)}(${selfRef}")
             w.w(m.params.map(p => {
@@ -323,7 +331,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
         if (i.ext.js) {
           w.w(s"struct JsProxy: ::djinni::JsProxyBase, $cls, ::djinni::InstanceTracker<JsProxy>").bracedSemi {
             w.wl("JsProxy(const em::val& v) : JsProxyBase(v) {}")
-            for (m <- i.methods) {
+            for (m <- i.allMethods) {
               if (!m.static) {
                 w.w(s"${cppMarshal.fqReturnType(m.ret)} ${idCpp.method(m.ident)}(")
                 w.w(m.params.map(p => {
@@ -343,11 +351,36 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
     }), (w => {}))
 
     writeCppFileGeneric(spec.wasmOutFolder.get, helperNamespace(), wasmFilenameStyle, spec.wasmIncludePrefix)(ident.name, origin, refs.cpp, (w => {
+      if (spec.multipleInheritance) {
+        w.w(s"auto $helper::toCpp(JsType j) -> CppType").braced {
+          w.w("if (j.isNull() || j.isUndefined())").braced { w.wl("return {};") }
+          if (i.descendants.nonEmpty) {
+            w.wl("const auto nativeType = j[\"_djinni_native_type\"];")
+            w.w("if (!nativeType.isUndefined())").braced {
+              for (d <- i.descendants) {
+                val tag = q(withWasmNamespace(idJs.ty(d.name)))
+                w.w(s"if (nativeType.strictlyEquals(em::val($tag)))").braced {
+                  w.wl(s"return ${helperClass(d.name)}::toCpp(j);")
+                }
+              }
+            }
+          }
+          w.wl("return _fromJs(j);")
+        }
+        w.w(s"auto $helper::fromCppOpt(const CppOptType& c) -> JsType").braced {
+          for (d <- i.descendants) {
+            w.w(s"if (auto derived = std::dynamic_pointer_cast<${cppMarshal.fqTypename(d.name, d.body)}>(c))").braced {
+              w.wl(s"return ${helperClass(d.name)}::fromCppOpt(derived);")
+            }
+          }
+          w.wl("return _toJs(c);")
+        }
+      }
       // method list
       if (i.ext.cpp) {
         w.w(s"em::val $helper::cppProxyMethods()").braced {
           w.w("static const em::val methods = em::val::array(std::vector<std::string>").bracedEnd(");") {
-            for (m <- i.methods) {
+            for (m <- i.allMethods) {
               if (!m.static) {
                 w.wl(s""""${idJs.method(m.ident)}",""")
               }
@@ -359,7 +392,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
       w.wl
       // stub methods
       if (i.ext.cpp) {
-        for (m <- i.methods.filter(m => !m.static || m.lang.js)) {
+        for (m <- i.allMethods.filter(m => !m.static || m.lang.js)) {
           val selfRef = if (m.static) "" else if (m.params.isEmpty) "const CppType& self" else "const CppType& self, "
           w.w(s"${stubRetType(m)} $helper::${idCpp.method(m.ident)}(${selfRef}")
           w.w(m.params.map(p => {
@@ -385,7 +418,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
       }
       // js proxy methods
       if (i.ext.js) {
-        for (m <- i.methods) {
+        for (m <- i.allMethods) {
           if (!m.static) {
             val constModifier = if (m.const) " const" else ""
             w.w(s"${cppMarshal.fqReturnType(m.ret)} ${helper}::JsProxy::${idCpp.method(m.ident)}(")
@@ -413,19 +446,20 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
       val fullyQualifiedName = withCppNamespace(ident.name)
       val fullyQualifiedJsName = withWasmNamespace(idJs.ty(ident.name))
 
+      val base = if (spec.multipleInheritance) "" else i.base.map(b => ", em::base<" + cppMarshal.fqTypename(b.expr.ident.name, i) + ">").getOrElse("")
       // embind
       w.w(s"EMSCRIPTEN_BINDINGS(${fullyQualifiedName})").braced {
         val classRegister = if (!spec.wasmOmitNsAlias && !spec.wasmNamespace.isEmpty) {
-          s"""::djinni::DjinniClass_<$cls>("${fullyQualifiedJsName}", "${spec.wasmNamespace.get}.${idJs.ty(ident.name)}")"""
+          s"""::djinni::DjinniClass_<$cls$base>("${fullyQualifiedJsName}", "${spec.wasmNamespace.get}.${idJs.ty(ident.name)}")"""
         } else {
-          s"""em::class_<$cls>("${fullyQualifiedJsName}")"""
+          s"""em::class_<$cls$base>("${fullyQualifiedJsName}")"""
         }
 
         w.wl(classRegister).nested {
           w.wl(s""".smart_ptr<std::shared_ptr<$cls>>("${fullyQualifiedJsName}")""")
           w.wl(s""".function("${idJs.method("native_destroy")}", &$helper::nativeDestroy)""")
           if (i.ext.cpp) {
-            for (m <- i.methods.filter(m => !m.static || m.lang.js)) {
+            for (m <- i.allMethods.filter(m => !m.static || m.lang.js)) {
               val funcType = if (m.static) "class_function" else "function"
               w.wl(s""".$funcType("${idJs.method(m.ident.name)}", $helper::${idCpp.method(m.ident)})""")
             }

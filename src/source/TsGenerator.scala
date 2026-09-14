@@ -195,7 +195,8 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
   private def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface, w: IndentWriter) {
     w.wl
     writeDoc(w, doc)
-    w.w(s"export interface ${idJs.ty(ident)}").braced {
+    val base = if (i.bases.isEmpty) "" else i.bases.map(b => toTsType(b.resolved)).mkString(" extends ", ", ", "")
+    w.w(s"export interface ${idJs.ty(ident)}$base").braced {
       for (m <- i.methods.filter(!_.static)) {
         writeMethodDoc(w, m, idJs.local)
         w.w(s"${idJs.method(m.ident)}(")
