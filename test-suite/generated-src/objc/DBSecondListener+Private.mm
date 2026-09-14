@@ -3,6 +3,7 @@
 
 #import "DBSecondListener+Private.h"
 #import "DBSecondListener.h"
+#import "DJIMarshal+Private.h"
 #import "DJIObjcWrapperCache+Private.h"
 #include <stdexcept>
 

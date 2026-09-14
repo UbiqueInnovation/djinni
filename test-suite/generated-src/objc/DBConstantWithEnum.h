@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 
 /** Record containing enum constant */
+NS_SWIFT_SENDABLE
 @interface DBConstantWithEnum : NSObject
 - (nonnull instancetype)init NS_DESIGNATED_INITIALIZER;
 + (nonnull instancetype)constantWithEnum;

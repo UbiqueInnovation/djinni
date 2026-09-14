@@ -94,7 +94,7 @@ public class EnumUsageRecord implements android.os.Parcelable {
         }
         this.mL = new ArrayList<Color>();
         in.readList(this.mL, getClass().getClassLoader());
-        ArrayList<Color> mSTemp = new ArrayList<Color>();
+        java.util.ArrayList<Color> mSTemp = new java.util.ArrayList<Color>();
         in.readList(mSTemp, getClass().getClassLoader());
         this.mS = new HashSet<Color>(mSTemp);
         this.mM = new HashMap<Color, Color>();
@@ -116,7 +116,7 @@ public class EnumUsageRecord implements android.os.Parcelable {
             out.writeByte((byte)0);
         }
         out.writeList(this.mL);
-        out.writeList(new ArrayList<Color>(this.mS));
+        out.writeList(new java.util.ArrayList<Color>(this.mS));
         out.writeMap(this.mM);
     }
 

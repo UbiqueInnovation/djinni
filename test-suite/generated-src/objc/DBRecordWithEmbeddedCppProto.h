@@ -4,6 +4,7 @@
 #import "proto/cpp/test2.pb.h"
 #import <Foundation/Foundation.h>
 
+NS_SWIFT_SENDABLE
 @interface DBRecordWithEmbeddedCppProto : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;

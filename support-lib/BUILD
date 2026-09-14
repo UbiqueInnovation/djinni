@@ -1,9 +1,10 @@
 load("@rules_cc//cc:defs.bzl", "cc_library", "objc_library")
 load("@rules_java//java:defs.bzl", "java_library")
+load("@rules_shell//shell:sh_library.bzl", "sh_library")
 
 cc_library(
     name = "djinni-support-common",
-    srcs = glob(["cpp/*.cpp"]),
+    srcs = glob(["cpp/*.cpp"], allow_empty = True),
     hdrs = glob(["*.hpp", "cpp/*.hpp"]),
     includes = ["cpp"],
     visibility = ["//visibility:public"],
@@ -19,7 +20,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//support-lib:djinni-support-common",
-        "@bazel_tools//tools/jdk:jni",
+        "@rules_java//toolchains:jni",
     ],
     alwayslink = 1,
 )
@@ -39,8 +40,15 @@ cc_library(
 
 objc_library(
     name = "djinni-support-objc",
-    srcs = glob(["objc/*.mm", "objc/*.cpp"]),
-    hdrs = glob(["objc/*.h", "objc/*.hpp"]),
+    srcs = glob(["objc/*.mm", "objc/*.cpp"], allow_empty = True),
+    # The Swift package carries standalone copies; Bazel uses the shared C++ headers.
+    hdrs = glob(["objc/*.h", "objc/*.hpp"], exclude = [
+        "objc/DataRef.hpp",
+        "objc/DataView.hpp",
+        "objc/Future.hpp",
+        "objc/expected.hpp",
+        "objc/tl_expected.hpp",
+    ]),
     copts = [
         "-ObjC++",
     ],
@@ -53,6 +61,7 @@ objc_library(
 java_library(
     name = "djinni-support-java",
     srcs = glob(["java/**/*.java"]),
+    deps = ["@maven_djinni//:androidx_annotation_annotation_jvm"],
     visibility = ["//visibility:public"],
 )
 

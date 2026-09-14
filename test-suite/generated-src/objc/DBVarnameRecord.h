@@ -8,6 +8,7 @@
  * anticipate it to be used as a prefix/suffix.  Some name styles behave
  * badly when it is.  However this test case ensures we at least don't crash.
  */
+NS_SWIFT_SENDABLE
 @interface DBVarnameRecord : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;

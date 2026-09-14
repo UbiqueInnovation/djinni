@@ -4,6 +4,7 @@
 #import "DBThrowingInterface+Private.h"
 #import "DBThrowingInterface.h"
 #import "DJIError.h"
+#import "DJIMarshal+Private.h"
 #include <stdexcept>
 
 static_assert(__has_feature(objc_arc), "Djinni requires ARC to be enabled for this file");

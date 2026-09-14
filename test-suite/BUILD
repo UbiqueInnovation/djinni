@@ -1,24 +1,42 @@
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_binary", "objc_library")
 load("@rules_java//java:defs.bzl", "java_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_unit_test")
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
+
+# Generate fixtures with the same protobuf version as the linked runtime.
+PROTO_CPP_SRCS = ["generated-proto/proto/cpp/test.pb.cc", "generated-proto/proto/cpp/test2.pb.cc"]
+PROTO_CPP_HDRS = ["generated-proto/proto/cpp/test.pb.h", "generated-proto/proto/cpp/test2.pb.h"]
+PROTO_JAVA_SRCS = ["generated-proto/java/djinni/test/Test.java", "generated-proto/java/djinni/test2/Test2.java"]
+PROTO_OBJC_SRCS = ["generated-proto/proto/objc/Test.pbobjc.m"]
+PROTO_OBJC_HDRS = ["generated-proto/proto/objc/Test.pbobjc.h"]
+
+genrule(
+    name = "proto-fixtures",
+    srcs = ["djinni/vendor/third-party/proto/test.proto", "djinni/vendor/third-party/proto/test2.proto"],
+    outs = PROTO_CPP_SRCS + PROTO_CPP_HDRS + PROTO_JAVA_SRCS + PROTO_OBJC_SRCS + PROTO_OBJC_HDRS,
+    tools = ["@com_google_protobuf//:protoc"],
+    cmd = "mkdir -p $(@D)/generated-proto/proto/cpp $(@D)/generated-proto/proto/objc $(@D)/generated-proto/java && " +
+          "$(location @com_google_protobuf//:protoc) -Itest-suite/djinni/vendor/third-party/proto " +
+          "--cpp_out=$(@D)/generated-proto/proto/cpp --java_out=$(@D)/generated-proto/java $(SRCS) && " +
+          "$(location @com_google_protobuf//:protoc) -Itest-suite/djinni/vendor/third-party/proto " +
+          "--objc_out=$(@D)/generated-proto/proto/objc $(location djinni/vendor/third-party/proto/test.proto)",
+)
 
 cc_library(
     name = "djinni-tests-common",
     srcs = glob([
         "generated-src/cpp/*.cpp",
         "handwritten-src/cpp/*.cpp",
-        "djinni/vendor/third-party/proto/cpp/*.cc",
-    ]),
+    ]) + PROTO_CPP_SRCS,
     hdrs = glob([
         "generated-src/cpp/*.hpp",
         "handwritten-src/cpp/*.hpp",
-        "djinni/vendor/third-party/proto/cpp/*.h",
-    ]),
+    ]) + PROTO_CPP_HDRS,
     includes = [
         "generated-src/cpp",
         "handwritten-src/cpp",
-        "djinni/vendor/third-party",
+        "generated-proto",
     ],
     copts = [
         "-fexceptions",
@@ -63,8 +81,7 @@ objc_library(
     hdrs = glob([
         "generated-src/objc/**/*.h",
         "handwritten-src/objc/**/*.h",
-        "djinni/vendor/third-party/proto/objc/*.h",
-    ]),
+    ]) + PROTO_OBJC_HDRS,
     includes = [
         "generated-src/objc",
         "handwritten-src/objc/impl",
@@ -81,12 +98,11 @@ objc_library(
     srcs = glob([
         "generated-src/objc/**/*.m",
         "handwritten-src/objc/**/*.m",
-    ]),
+    ], allow_empty = True),
     hdrs = glob([
         "generated-src/objc/**/*.h",
         "handwritten-src/objc/**/*.h",
-        "djinni/vendor/third-party/proto/objc/*.h",
-    ]),
+    ]) + PROTO_OBJC_HDRS,
     includes = [
         "generated-src/objc",
         "handwritten-src/objc/impl",
@@ -103,12 +119,8 @@ objc_library(
     copts = [
         "-fno-objc-arc",
     ],
-    srcs = glob([
-        "djinni/vendor/third-party/proto/objc/*.m",
-    ]),
-    hdrs = glob([
-        "djinni/vendor/third-party/proto/objc/*.h",
-    ]),
+    srcs = PROTO_OBJC_SRCS,
+    hdrs = PROTO_OBJC_HDRS,
     deps = [
         "@com_google_protobuf//:protobuf_objc",
     ],
@@ -119,8 +131,7 @@ java_test(
     srcs = glob([
         "generated-src/java/**/*.java",
         "handwritten-src/java/**/*.java",
-        "djinni/vendor/third-party/proto/java/**/*.java",
-    ]),
+    ]) + PROTO_JAVA_SRCS,
     main_class = "com.dropbox.djinni.test.AllTests",
     use_testrunner = False,
     runtime_deps = [":libdjinni-tests-jni.so"],
@@ -182,7 +193,7 @@ sh_binary(
                  "handwritten-src/ts/*.json",
                  "djinni/vendor/third-party/proto/ts/*.ts",
                  "node_modules/**",
-                 "generated-src/ts/*.ts"]) + [":wasm"]
+                 "generated-src/ts/*.ts"], allow_empty = True) + [":wasm"]
 )
 
 sh_binary(

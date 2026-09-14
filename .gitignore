@@ -5,8 +5,6 @@
 /bazel-*
 .ijwb/
 .clwb/
-MODULE.bazel
-MODULE.bazel.lock
 # djinni output directories
 djinni-output-temp/
 *.d

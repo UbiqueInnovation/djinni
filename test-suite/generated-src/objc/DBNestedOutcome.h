@@ -4,6 +4,7 @@
 #import "DJOutcome.h"
 #import <Foundation/Foundation.h>
 
+NS_SWIFT_SENDABLE
 @interface DBNestedOutcome : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;

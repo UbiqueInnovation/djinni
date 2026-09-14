@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 
 /** Extended record */
+NS_SWIFT_SENDABLE
 @interface DBExtendedRecord : NSObject
 - (nonnull instancetype)init NS_UNAVAILABLE;
 + (nonnull instancetype)new NS_UNAVAILABLE;

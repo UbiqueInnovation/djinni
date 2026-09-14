@@ -5,8 +5,34 @@ import android.os.Parcel;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
+import java.util.EnumSet;
 
 public class AndroidParcelableTest extends TestCase {
+
+    public void testSet() {
+        HashSet<String> strings = new HashSet<String>();
+        strings.add("hello");
+        HashSet<Integer> integers = new HashSet<Integer>();
+        integers.add(42);
+        Parcel parcel = new Parcel();
+        new SetRecord(strings, integers).writeToParcel(parcel, 0);
+        parcel.flush();
+        SetRecord copy = new SetRecord(parcel);
+        assertEquals(strings, copy.getSset());
+        assertEquals(integers, copy.getIset());
+    }
+
+    public void testFlags() {
+        for (EnumSet<AccessFlags> flags : java.util.Arrays.asList(
+                EnumSet.noneOf(AccessFlags.class),
+                EnumSet.of(AccessFlags.OWNER_READ, AccessFlags.GROUP_WRITE),
+                EnumSet.allOf(AccessFlags.class))) {
+            Parcel parcel = new Parcel();
+            new RecordWithFlags(flags).writeToParcel(parcel, 0);
+            parcel.flush();
+            assertEquals(flags, new RecordWithFlags(parcel).getAccess());
+        }
+    }
 
     public void testAssortedPrimitives() {
         AssortedPrimitives p1 = new AssortedPrimitives(true, (byte)123, (short)20000, 1000000000, 1234567890123456789L, 1.23f, 1.23d,

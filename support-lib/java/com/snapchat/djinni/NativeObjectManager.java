@@ -16,7 +16,6 @@
 
 package com.snapchat.djinni;
 
-import android.util.Log;
 import androidx.annotation.Keep;
 
 import java.lang.ref.PhantomReference;
@@ -25,6 +24,8 @@ import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.Method;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Djinni used to generate finalizer methods for CppProxy objects. However,
@@ -92,7 +93,7 @@ public class NativeObjectManager {
                                     wrapper.cleanup();
                                 } catch (Exception e) {
                                     // Nothing we can do, just keep going
-                                    Log.e("Djinni", "Exception in native cleanup of " +
+                                    Logger.getLogger("Djinni").log(Level.SEVERE, "Exception in native cleanup of " +
                                             wrapper.mDestroyMethod.getDeclaringClass().getCanonicalName(), e);
                                 }
                             }

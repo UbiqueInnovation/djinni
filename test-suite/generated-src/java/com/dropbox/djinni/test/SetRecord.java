@@ -54,10 +54,10 @@ public class SetRecord implements android.os.Parcelable {
     };
 
     public SetRecord(android.os.Parcel in) {
-        ArrayList<String> mSsetTemp = new ArrayList<String>();
+        java.util.ArrayList<String> mSsetTemp = new java.util.ArrayList<String>();
         in.readList(mSsetTemp, getClass().getClassLoader());
         this.mSset = new HashSet<String>(mSsetTemp);
-        ArrayList<Integer> mIsetTemp = new ArrayList<Integer>();
+        java.util.ArrayList<Integer> mIsetTemp = new java.util.ArrayList<Integer>();
         in.readList(mIsetTemp, getClass().getClassLoader());
         this.mIset = new HashSet<Integer>(mIsetTemp);
     }
@@ -69,8 +69,8 @@ public class SetRecord implements android.os.Parcelable {
 
     @Override
     public void writeToParcel(android.os.Parcel out, int flags) {
-        out.writeList(new ArrayList<String>(this.mSset));
-        out.writeList(new ArrayList<Integer>(this.mIset));
+        out.writeList(new java.util.ArrayList<String>(this.mSset));
+        out.writeList(new java.util.ArrayList<Integer>(this.mIset));
     }
 
 }

@@ -3,6 +3,7 @@
 
 #import "DBRecordUsingExtendedRecord+Private.h"
 #import "DBExtendedRecord+Private.h"
+#import "DJIMarshal+Private.h"
 #include <cassert>
 
 namespace djinni_generated {
