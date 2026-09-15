@@ -64,6 +64,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
   def nnCheck(expr: String): String = spec.cppNnCheckExpression.fold(expr)(check => s"$check($expr)")
 
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
+    val descendants = i.descendants.filter(d => spec.typeSpecs.get(d.name).forall(_.objcppOutFolder.nonEmpty))
     val refs = new ObjcRefs()
     i.allMethods.map(m => {
       m.params.map(p => refs.find(p.ty))
@@ -73,7 +74,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       refs.find(c.ty)
     })
 
-    i.descendants.foreach { d =>
+    descendants.foreach { d =>
       refs.find(d)
       refs.body.add("#import " + objcMarshal.include(d.name))
     }
@@ -296,18 +297,18 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           }
           if (i.children.nonEmpty && i.ext.cpp && !i.ext.objc) {
             w.wl("const Class concreteClass = object_getClass(objc);")
-            for (d <- i.descendants) {
+            for (d <- descendants) {
               val helper = objcppMarshal.helperClassWithNs(d.name)
               w.w(s"if (concreteClass == $helper::cppProxyClass())").braced {
                 w.wl(s"return $helper::toCpp(($helper::ObjcType)objc);")
               }
             }
           }
-          for (d <- i.children) {
+          for (d <- i.children if spec.typeSpecs.get(d.name).forall(_.objcppOutFolder.nonEmpty)) {
             val child = objcMarshal.typename(d.name, d.body)
             val test = if (useProtocol(i.ext, spec)) s"[(id)objc conformsToProtocol:@protocol($child)]" else s"[(id)objc isKindOfClass:[$child class]]"
             w.w(s"if ($test)").braced {
-              for (descendant <- d.body.asInstanceOf[Interface].descendants) {
+              for (descendant <- d.body.asInstanceOf[Interface].descendants if spec.typeSpecs.get(descendant.name).forall(_.objcppOutFolder.nonEmpty)) {
                 val name = objcMarshal.typename(descendant.name, descendant.body)
                 val matchType = if (useProtocol(i.ext, spec)) s"[(id)objc conformsToProtocol:@protocol($name)]" else s"[(id)objc isKindOfClass:[$name class]]"
                 val helper = objcppMarshal.helperClassWithNs(descendant.name)
@@ -355,7 +356,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           w.w("if (!cpp)").braced {
             w.wl("return nil;")
           }
-          for (d <- i.descendants) {
+          for (d <- descendants) {
             w.w(s"if (auto derived = std::dynamic_pointer_cast<${cppMarshal.fqTypename(d.name, d.body)}>(cpp))").braced {
               w.wl(s"return ${objcppMarshal.helperClassWithNs(d.name)}::fromCppOpt(derived);")
             }

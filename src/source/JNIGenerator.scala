@@ -186,6 +186,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
   }
 
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
+    val descendants = i.descendants.filter(d => spec.typeSpecs.get(d.name).forall(_.jniOutFolder.nonEmpty))
     val refs = new JNIRefs(ident.name)
 
     // Add user include file if defined
@@ -199,7 +200,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
       refs.find(c.ty)
     })
 
-    i.descendants.foreach(d => refs.find(d))
+    descendants.foreach(d => refs.find(d))
     val jniSelf = jniMarshal.helperClass(ident)
     val cppSelf = cppMarshal.fqTypename(ident, i) + cppTypeArgs(typeParams)
 
@@ -291,7 +292,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         w.w(s"auto $jniSelf::toCpp(JNIEnv* jniEnv, JniType j) -> CppType").braced {
           if (spec.cppNnType.nonEmpty)
             w.wl(s"""DJINNI_ASSERT_MSG(j, jniEnv, "$jniSelf::toCpp requires a non-null Java object");""")
-          for (d <- i.descendants) {
+          for (d <- descendants) {
             val child = jniMarshal.helperClass(d.name)
             w.w(s"if (j && jniEnv->IsInstanceOf(j, $child::inheritanceClass()))").braced {
               w.wl(s"return $child::toCpp(jniEnv, j);")
@@ -302,7 +303,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           w.wl(s"return $checked;")
         }
         w.w(s"auto $jniSelf::fromCppOpt(JNIEnv* jniEnv, const CppOptType& c) -> ::djinni::LocalRef<JniType>").braced {
-          for (d <- i.descendants) {
+          for (d <- descendants) {
             val child = jniMarshal.helperClass(d.name)
             w.w(s"if (auto derived = std::dynamic_pointer_cast<${cppMarshal.fqTypename(d.name, d.body)}>(c))").braced {
               w.wl(s"return $child::fromCppOpt(jniEnv, derived);")

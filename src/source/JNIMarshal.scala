@@ -72,7 +72,7 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
     path.replaceAll("\\$", spec.jniBaseLibIncludePrefix);
   }
 
-  def include(ident: String) = q(spec.jniIncludePrefix + spec.jniFileIdentStyle(ident) + "." + spec.cppHeaderExt)
+  def include(ident: String) = q(spec.typeSpecs.getOrElse(ident, spec).jniIncludePrefix + spec.jniFileIdentStyle(ident) + "." + spec.cppHeaderExt)
 
   def toJniType(ty: TypeRef): String = toJniType(ty.resolved, false)
   def toJniType(m: MExpr, needRef: Boolean): String = m.base match {
@@ -88,7 +88,7 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
   // The mangled Java typename without the "L...;" decoration useful only for class reflection on our own type
   def undecoratedTypename(name: String, ty: TypeDef): String = {
     val javaClassName = idJava.ty(name)
-    spec.javaPackage.fold(javaClassName)(p => p.replaceAllLiterally(".", "/") + "/" + javaClassName)
+    spec.typeSpecs.getOrElse(name, spec).javaPackage.fold(javaClassName)(p => p.replaceAllLiterally(".", "/") + "/" + javaClassName)
   }
 
   private def javaTypeSignature(tm: MExpr): String = tm.base match {

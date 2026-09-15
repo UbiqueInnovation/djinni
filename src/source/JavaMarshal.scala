@@ -31,7 +31,7 @@ class JavaMarshal(spec: Spec) extends Marshal(spec) {
   def typename(name: String, ty: TypeDef): String = idJava.ty(name)
 
   override def fqTypename(tm: MExpr): String = toJavaType(tm, spec.javaPackage)
-  def fqTypename(name: String, ty: TypeDef): String = withPackage(spec.javaPackage, idJava.ty(name))
+  def fqTypename(name: String, ty: TypeDef): String = withPackage(spec.typeSpecs.getOrElse(name, spec).javaPackage, idJava.ty(name))
 
   override def paramType(tm: MExpr): String = toJavaValueType(tm, None)
   override def fqParamType(tm: MExpr): String = toJavaValueType(tm, spec.javaPackage)
@@ -129,7 +129,7 @@ class JavaMarshal(spec: Spec) extends Marshal(spec) {
             case MSet => "HashSet"
             case MMap => "HashMap"
             case MArray => throw new AssertionError("array should have been special cased")
-            case d: MDef => withPackage(packageName, idJava.ty(d.name))
+            case d: MDef => withPackage(spec.typeSpecs.get(d.name).map(_.javaPackage).getOrElse(packageName), idJava.ty(d.name))
             case e: MExtern => throw new AssertionError("unreachable")
             case e: MProtobuf => throw new AssertionError("unreachable")
             case p: MParam => idJava.typeParam(p.name)

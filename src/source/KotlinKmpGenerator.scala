@@ -25,7 +25,10 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   private val nativeHandleType = kmpBridgePrefix + "DjinniNativeHandle"
 
   override def generate(idl: Seq[TypeDecl]) {
-    if (spec.multipleInheritance) spec.kotlinKmpCommonOutFolder.foreach { folder =>
+    val supportOwner = spec.typeSpecs.toSeq.filter { case (_, s) =>
+      s.kotlinKmpCommonOutFolder.nonEmpty && s.kotlinKmpCommonOutFolder == spec.kotlinKmpCommonOutFolder
+    }.map(_._1).sorted.headOption
+    if (spec.multipleInheritance && supportOwner.forall(name => idl.exists(_.ident.name == name))) spec.kotlinKmpCommonOutFolder.foreach { folder =>
       writeKotlinFile(folder, nativeHandleType + ".kt", "interface bridge", w => {
         w.w(s"internal interface $nativeHandleType").braced {
           w.wl("val djinniNativeHandle: Any")
