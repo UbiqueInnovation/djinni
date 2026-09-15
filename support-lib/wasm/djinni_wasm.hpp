@@ -479,6 +479,13 @@ struct JsInterface {
             cppProxyCache.erase(cpp.get());
         }
     }
+    template <typename T>
+    static auto tagNativeProxy(em::val& proxy, int) -> decltype(T::djinni_private_native_type_tag(), void()) {
+        proxy.set("_djinni_native_type", T::djinni_private_native_type_tag());
+    }
+    template <typename T>
+    static void tagNativeProxy(em::val&, ...) {}
+
     // enable this only when the derived class has `cppProxyMethods` defined
     // (interface +c)
     template <typename, typename>
@@ -509,6 +516,7 @@ struct JsInterface {
             static em::val weakRefClass = em::val::global("WeakRef");
             em::val nativeRef(c);
             em::val cppProxy = getCppProxyClass().new_(nativeRef, Self::cppProxyMethods());
+            tagNativeProxy<Self>(cppProxy, 0);
             em::val weakRef = weakRefClass.new_(cppProxy);
             if (i == cppProxyCache.end()) {
                 cppProxyCache.emplace(c.get(), CppProxyCacheEntry{weakRef, jsRefCount});
@@ -557,15 +565,15 @@ struct JsInterface {
                 auto i = jsProxyCache.find(id);
                 if (i != jsProxyCache.end()) {
                     auto strongProxyRef = i->second.lock();
-                    if (strongProxyRef) {
-                        return std::dynamic_pointer_cast<typename Self::JsProxy>(strongProxyRef);
+                    if (auto proxy = std::dynamic_pointer_cast<I>(strongProxyRef)) {
+                        return proxy;
                     }
                 }
             }
             // not found or cache entry expired
             // create new js proxy and store it in cache
             auto newJsProxy = std::make_shared<typename Self::JsProxy>(js);
-            jsProxyCache.emplace(id, newJsProxy);
+            jsProxyCache[id] = newJsProxy;
             return newJsProxy;
         }
     };
@@ -637,13 +645,13 @@ struct ExceptionHandlingTraits<void> {
     }
 };
 
-template<typename ClassType>
-class DjinniClass_ : public em::class_<ClassType> {
+template<typename ClassType, typename... Base>
+class DjinniClass_ : public em::class_<ClassType, Base...> {
 public:
     DjinniClass_ () = delete;
 
     EMSCRIPTEN_ALWAYS_INLINE explicit DjinniClass_(const char* prefixedName, const char* namespacedName)
-        : em::class_<ClassType>(prefixedName) {
+        : em::class_<ClassType, Base...>(prefixedName) {
         djinni_register_name_in_ns(prefixedName, namespacedName);
     }
 };

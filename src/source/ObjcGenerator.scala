@@ -98,6 +98,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       refs.find(c.ty)
     })
 
+    i.bases.foreach(b => refs.header.add("#import " + marshal.include(b.expr.ident.name)))
     val self = marshal.typename(ident, i)
 
     refs.header.add("#import <Foundation/Foundation.h>")
@@ -146,10 +147,10 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       w.wl
       writeDoc(w, doc)
       if (useProtocol(i.ext, spec)) {
-        val baseProtocol = if (spec.objcStrictProtocol) " <NSObject>" else ""
+        val baseProtocol = if (i.bases.nonEmpty) i.bases.map(b => idObjc.ty(b.expr.ident)).mkString(" <", ", ", ">") else if (spec.objcStrictProtocol) " <NSObject>" else ""
         w.wl(s"@protocol $self$baseProtocol")
       } else {
-        w.wl(s"@interface $self : NSObject")
+        w.wl(s"@interface $self : ${i.base.map(b => idObjc.ty(b.expr.ident)).getOrElse("NSObject")}")
       }
 
       for (m <- i.methods) {

@@ -154,7 +154,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
       // "generic" -> false,
       "hash" -> QuotedString("%s.hash"))
     td.body match {
-      case Interface(_,_,_) =>
+      case _: Interface =>
         if (spec.objcGenProtocol)
           map + ("protocol" -> spec.objcGenProtocol)
         else

@@ -165,11 +165,11 @@ private object IdlParser extends RegexParsers {
   }
 
   def interfaceHeader = "interface" ~> extInterface
-  def interface: Parser[Interface] = interfaceHeader ~ bracesList(method | const) ^^ {
-    case ext~items => {
+  def interface: Parser[Interface] = interfaceHeader ~ opt(":" ~> rep1sep(typeRef, ",")) ~ bracesList(method | const) ^^ {
+    case ext~base~items => {
       val methods = items collect {case m: Method => m}
       val consts = items collect {case c: Const => c}
-      Interface(ext, methods, consts)
+      Interface(ext, methods, consts, base.getOrElse(Seq.empty))
     }
   }
 

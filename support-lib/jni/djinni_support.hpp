@@ -410,9 +410,8 @@ public:
 
         // Case 2 - already a Java proxy; we just need to pull the C++ impl out. (This case
         // is only possible if we were constructed with a cppProxyClassName parameter.)
-        LocalRef<jclass> clazz {jniEnv->GetObjectClass(j)};
-        if (m_cppProxyClass
-            && jniEnv->IsSameObject(clazz.get(), m_cppProxyClass.clazz.get())) {
+        // Generated CppProxy classes are final; no temporary class reference is needed.
+        if (m_cppProxyClass && jniEnv->IsInstanceOf(j, m_cppProxyClass.clazz.get())) {
             jlong handle = jniEnv->GetLongField(j, m_cppProxyClass.idField);
             jniExceptionCheck(jniEnv);
             return objectFromHandleAddress<I>(handle);
@@ -476,13 +475,23 @@ private:
         static_assert(std::is_base_of<JavaProxyHandle<JavaProxy>, JavaProxy>::value,
             "JavaProxy must derive from JavaProxyCacheEntry");
 
-        return std::static_pointer_cast<JavaProxy>(JavaProxyCache::get(
+        // One weak entry per interface and thread; misses use the shared cache.
+        static thread_local std::weak_ptr<JavaProxy> recent;
+        if (auto proxy = recent.lock()) {
+            if (jniGetThreadEnv()->IsSameObject(j, proxy->JavaProxyHandle<JavaProxy>::get().get())) {
+                return proxy;
+            }
+        }
+        auto proxy = std::static_pointer_cast<JavaProxy>(JavaProxyCache::get(
             typeid(JavaProxy), j,
             [] (const jobject & obj) -> std::pair<std::shared_ptr<void>, jobject> {
                 auto ret = std::make_shared<JavaProxy>(obj);
                 return { ret, ret->JavaProxyHandle<JavaProxy>::get().get() };
             }
         ));
+        // Only retained adapters can benefit from a subsequent cache hit.
+        if (proxy.use_count() > 1) recent = proxy;
+        return proxy;
     }
 
     template <typename S>

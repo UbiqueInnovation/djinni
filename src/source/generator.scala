@@ -124,7 +124,8 @@ package object generatorTools {
                    yamlOutFolder: Option[File],
                    yamlOutFile: Option[String],
                    yamlPrefix: String,
-                   moduleName: String)
+                   moduleName: String,
+                   multipleInheritance: Boolean = false)
 
   def useProtocol(ext: Ext, spec: Spec) = ext.objc || spec.objcGenProtocol
 

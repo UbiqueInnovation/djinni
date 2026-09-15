@@ -51,7 +51,11 @@ JsProxyBase::JsProxyBase(const em::val& v) : _js(v), _id(_js["_djinni_js_proxy_i
 
 JsProxyBase::~JsProxyBase() {
     std::lock_guard lk(jsProxyCacheMutex);
-    jsProxyCache.erase(_id);
+    // A more specific interface proxy may have replaced this entry.
+    auto entry = jsProxyCache.find(_id);
+    if (entry != jsProxyCache.end() && entry->second.expired()) {
+        jsProxyCache.erase(entry);
+    }
 }
 
 const em::val& JsProxyBase::_jsRef() const {

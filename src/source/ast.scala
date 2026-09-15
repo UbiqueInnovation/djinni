@@ -20,7 +20,7 @@ package djinni.ast
 
 import java.io.File
 import djinni.ast.Record.DerivingType.DerivingType
-import djinni.meta.MExpr
+import djinni.meta.{MDef, MExpr}
 import djinni.syntax.Loc
 
 case class IdlFile(imports: Seq[FileRef], typeDecls: Seq[TypeDecl], flags: Seq[String])
@@ -83,7 +83,15 @@ object Record {
   }
 }
 
-case class Interface(ext: Ext, methods: Seq[Interface.Method], consts: Seq[Const]) extends TypeDef
+case class Interface(ext: Ext, methods: Seq[Interface.Method], consts: Seq[Const], bases: Seq[TypeRef] = Seq.empty) extends TypeDef {
+  var inheritedMethods: Seq[Interface.Method] = Seq.empty
+  var children: Seq[MDef] = Seq.empty
+  def allMethods: Seq[Interface.Method] = inheritedMethods ++ methods
+  def base: Option[TypeRef] = bases.headOption
+  def baseInterfaces: Seq[Interface] = bases.map(_.resolved.base.asInstanceOf[MDef].body.asInstanceOf[Interface])
+  def baseInterface: Option[Interface] = baseInterfaces.headOption
+  def descendants: Seq[MDef] = children.flatMap(d => d.body.asInstanceOf[Interface].descendants :+ d).distinct
+}
 object Interface {
   case class Method(ident: Ident, params: Seq[Field], ret: Option[TypeRef], doc: Doc, static: Boolean, const: Boolean, lang: Ext)
 }

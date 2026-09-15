@@ -144,7 +144,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
     val refs = new JavaRefs()
 
-    i.methods.map(m => {
+    i.allMethods.map(m => {
       m.params.map(p => refs.find(p.ty))
       m.ret.foreach(refs.find)
     })
@@ -179,11 +179,15 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       javaAnnotationHeader.foreach(w.wl)
 
       // if no static and no cpp will use interface instead of abstract class
-      val genJavaInterface = spec.javaGenInterface && !statics.nonEmpty && !i.ext.cpp
+      def generatesInterface(body: Interface): Boolean =
+        spec.javaGenInterface && !body.ext.cpp && !body.methods.exists(m => m.static && m.lang.java) && body.baseInterface.forall(generatesInterface)
+      val genJavaInterface = spec.multipleInheritance || generatesInterface(i)
       val classOrInterfaceDesc = if (genJavaInterface) "interface" else "abstract class";
       val methodPrefixDesc = if (genJavaInterface) "" else "public abstract ";
 
-      w.w(s"${javaClassAccessModifierString}${classOrInterfaceDesc} $javaClass$typeParamList").braced {
+      val baseClass = if (spec.multipleInheritance && i.bases.nonEmpty) i.bases.map(marshal.typename).mkString(" extends ", ", ", "")
+        else i.base.map(b => (if (!genJavaInterface && generatesInterface(i.baseInterface.get)) " implements " else " extends ") + marshal.typename(b)).getOrElse("")
+      w.w(s"${javaClassAccessModifierString}${classOrInterfaceDesc} $javaClass$typeParamList$baseClass").braced {
         val skipFirst = SkipFirst()
         generateJavaConstants(w, i.consts)
 
@@ -202,7 +206,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
 
         val statics = i.methods.filter(m => m.static && m.lang.java)
 
-        if (statics.nonEmpty) {
+        if (statics.nonEmpty && !spec.multipleInheritance) {
           writeModuleInitializer(w)
         }
         for (m <- statics) {
@@ -216,12 +220,30 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             nullityAnnotation + marshal.paramType(p.ty) + " " + idJava.local(p.ident)
           })
           marshal.nullityAnnotation(m.ret).foreach(w.wl)
-          w.wl("public static native " + ret + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ";")
+          if (spec.multipleInheritance) {
+            w.w("public static " + ret + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")")).braced {
+              val args = m.params.map(p => idJava.local(p.ident)).mkString(", ")
+              w.wl(m.ret.fold("")(_ => "return ") + s"Native.${idJava.method(m.ident)}($args);")
+            }
+          } else {
+            w.wl("public static native " + ret + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ";")
+          }
+        }
+        if (spec.multipleInheritance && statics.nonEmpty) {
+          w.wl
+          w.w("final class Native").braced {
+            w.wl("private Native() {}")
+            writeModuleInitializer(w)
+            for (m <- statics) {
+              val params = m.params.map(p => marshal.paramType(p.ty) + " " + idJava.local(p.ident))
+              w.wl("private static native " + marshal.returnType(m.ret) + " " + idJava.method(m.ident) + params.mkString("(", ", ", ")") + ";")
+            }
+          }
         }
         if (i.ext.cpp) {
           w.wl
           javaAnnotationHeader.foreach(w.wl)
-          w.wl(s"public static final class CppProxy$typeParamList extends $javaClass$typeParamList").braced {
+          w.wl(s"public static final class CppProxy$typeParamList ${if (genJavaInterface) "implements" else "extends"} $javaClass$typeParamList").braced {
             writeModuleInitializer(w)
             w.wl("private final long nativeRef;")
             w.wl("private final AtomicBoolean destroyed = new AtomicBoolean(false);")
@@ -232,7 +254,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
               w.wl("NativeObjectManager.register(this, nativeRef);")
             }
             w.wl("public static native void nativeDestroy(long nativeRef);")
-            for (m <- i.methods if !m.static) { // Static methods not in CppProxy
+            for (m <- i.allMethods if !m.static) { // Static methods not in CppProxy
               val ret = marshal.returnType(m.ret)
               val returnStmt = m.ret.fold("")(_ => "return ")
               val params = m.params.map(p => marshal.paramType(p.ty) + " " + idJava.local(p.ident)).mkString(", ")

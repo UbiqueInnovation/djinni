@@ -34,7 +34,7 @@ package object resolver {
 
 type Scope = immutable.Map[String,Meta]
 
-def resolve(metas: Scope, idl: Seq[TypeDecl]): Option[Error] = {
+def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = false): Option[Error] = {
 
   try {
     var topScope = metas
@@ -76,6 +76,47 @@ def resolve(metas: Scope, idl: Seq[TypeDecl]): Option[Error] = {
 
       resolve(scope, typeDecl.body)
     }
+
+    val visiting = mutable.Set[String]()
+    val visited = mutable.Set[String]()
+    def inherit(td: TypeDecl): Unit = td.body match {
+      case i: Interface if !visited(td.ident.name) =>
+        if (!visiting.add(td.ident.name))
+          throw Error(td.ident.loc, "interface inheritance cycle").toException
+        if (!multipleInheritance && i.bases.size > 1)
+          throw Error(td.ident.loc, "multiple parents require --multiple-inheritance true").toException
+        val parents = new DupeChecker("parent")
+        for (ref <- i.bases) {
+          parents.check(ref.expr.ident)
+          val parent = ref.resolved.base match {
+            case d: MDef if d.defType == DInterface => d
+            case _ => throw Error(ref.expr.ident.loc, "base must be an IDL interface (use @import, not @extern)").toException
+          }
+          if (td.params.nonEmpty || parent.numParams != 0)
+            throw Error(ref.expr.ident.loc, "generic interface inheritance is not supported").toException
+          inherit(idl.find(_.ident.name == parent.name).get)
+          val b = parent.body.asInstanceOf[Interface]
+          val nativeChild = multipleInheritance && i.ext.cpp && b.ext.cpp &&
+            !i.ext.java && !i.ext.objc && !i.ext.js
+          if (i.ext != b.ext && !nativeChild)
+            throw Error(ref.expr.ident.loc, "inherited interfaces must have the same implementation language modifiers").toException
+          b.children :+= topScope(td.ident.name).asInstanceOf[MDef]
+        }
+        val members = new DupeChecker("method")
+        val ancestors = mutable.Set[String]()
+        def checkMembers(body: Interface): Unit = {
+          for (ref <- body.bases if ancestors.add(ref.expr.ident.name))
+            checkMembers(ref.resolved.base.asInstanceOf[MDef].body.asInstanceOf[Interface])
+          body.methods.foreach(m => members.check(m.ident))
+          body.consts.foreach(c => members.check(c.ident))
+        }
+        checkMembers(i)
+        i.inheritedMethods = i.baseInterfaces.flatMap(_.allMethods).filterNot(_.static).distinct
+        visiting.remove(td.ident.name)
+        visited.add(td.ident.name)
+      case _ =>
+    }
+    idl.foreach(inherit)
 
     for (typeDecl <- idl) {
       resolveConst(typeDecl.body)
@@ -271,6 +312,7 @@ private def resolveRecord(scope: Scope, r: Record) {
 }
 
 private def resolveInterface(scope: Scope, i: Interface) {
+  i.bases.foreach(resolveRef(scope, _))
   // Const and static methods are only allowed on +c (only) interfaces
   if (i.ext.java || i.ext.objc) {
     for (m <- i.methods) {

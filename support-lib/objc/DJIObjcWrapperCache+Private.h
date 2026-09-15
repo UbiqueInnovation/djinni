@@ -40,6 +40,24 @@ struct ObjcProxyCacheTraits {
 extern template class ProxyCache<ObjcProxyCacheTraits>;
 using ObjcProxyCache = ProxyCache<ObjcProxyCacheTraits>;
 
+template <typename CppType, typename ObjcType, typename Factory>
+static std::shared_ptr<CppType> get_cached_objc_proxy(ObjcType * objcRef, Factory && create) {
+    // A live adapter retains objcRef, so pointer reuse cannot match a live entry.
+    // Keep one weak entry per interface and thread; misses use the shared cache.
+    static thread_local __unsafe_unretained id recentObject;
+    static thread_local std::weak_ptr<CppType> recent;
+    if (recentObject == objcRef) {
+        if (auto proxy = recent.lock()) return proxy;
+    }
+    auto proxy = create();
+    // Only cache adapters that another caller retains; do not penalize one-shot conversions.
+    if (proxy.use_count() > 1) {
+        recentObject = objcRef;
+        recent = proxy;
+    }
+    return proxy;
+}
+
 template <typename CppType, typename ObjcType>
 static std::shared_ptr<CppType> get_objc_proxy(ObjcType * objcRef) {
     return std::static_pointer_cast<CppType>(ObjcProxyCache::get(

@@ -191,7 +191,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
     // Add user include file if defined
     spec.jniFunctionPrologueFile.foreach(x=>refs.jniCpp.add("#include " + q(x)))
 
-    i.methods.foreach(m => {
+    i.allMethods.foreach(m => {
       m.params.foreach(p => refs.find(p.ty))
       m.ret.foreach(refs.find)
     })
@@ -199,6 +199,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
       refs.find(c.ty)
     })
 
+    i.descendants.foreach(d => refs.find(d))
     val jniSelf = jniMarshal.helperClass(ident)
     val cppSelf = cppMarshal.fqTypename(ident, i) + cppTypeArgs(typeParams)
 
@@ -221,18 +222,27 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         w.wl
         w.wl(s"using Boxed = $jniSelf;")
         w.wl
+        if (i.bases.nonEmpty) {
+          val field = if (i.ext.java) "clazz" else "inheritanceClass_"
+          w.wl(s"static jclass inheritanceClass() { return ::djinni::JniClass<$jniSelf>::get().$field.get(); }")
+        }
         w.wl(s"~$jniSelf();")
         w.wl
-        if (spec.cppNnType.nonEmpty) {
-          def nnCheck(expr: String): String = spec.cppNnCheckExpression.fold(expr)(check => s"$check($expr)")
-          w.w("static CppType toCpp(JNIEnv* jniEnv, JniType j)").bracedSemi {
-            w.wl(s"""DJINNI_ASSERT_MSG(j, jniEnv, "$jniSelf::fromCpp requires a non-null Java object");""")
-            w.wl(s"""return ${nnCheck(s"::djinni::JniClass<$jniSelf>::get()._fromJava(jniEnv, j)")};""")
-          }
+        if (i.children.nonEmpty) {
+          w.wl("static CppType toCpp(JNIEnv* jniEnv, JniType j);")
+          w.wl("static ::djinni::LocalRef<JniType> fromCppOpt(JNIEnv* jniEnv, const CppOptType& c);")
         } else {
-          w.wl(s"static CppType toCpp(JNIEnv* jniEnv, JniType j) { return ::djinni::JniClass<$jniSelf>::get()._fromJava(jniEnv, j); }")
+          if (spec.cppNnType.nonEmpty) {
+            def nnCheck(expr: String): String = spec.cppNnCheckExpression.fold(expr)(check => s"$check($expr)")
+            w.w("static CppType toCpp(JNIEnv* jniEnv, JniType j)").bracedSemi {
+              w.wl(s"""DJINNI_ASSERT_MSG(j, jniEnv, "$jniSelf::fromCpp requires a non-null Java object");""")
+              w.wl(s"""return ${nnCheck(s"::djinni::JniClass<$jniSelf>::get()._fromJava(jniEnv, j)")};""")
+            }
+          } else {
+            w.wl(s"static CppType toCpp(JNIEnv* jniEnv, JniType j) { return ::djinni::JniClass<$jniSelf>::get()._fromJava(jniEnv, j); }")
+          }
+          w.wl(s"static ::djinni::LocalRef<JniType> fromCppOpt(JNIEnv* jniEnv, const CppOptType& c) { return {jniEnv, ::djinni::JniClass<$jniSelf>::get()._toJava(jniEnv, c)}; }")
         }
-        w.wl(s"static ::djinni::LocalRef<JniType> fromCppOpt(JNIEnv* jniEnv, const CppOptType& c) { return {jniEnv, ::djinni::JniClass<$jniSelf>::get()._toJava(jniEnv, c)}; }")
         w.wl(s"static ::djinni::LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const CppType& c) { return fromCppOpt(jniEnv, c); }")
         w.wl
         w.wlOutdent("private:")
@@ -240,13 +250,15 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         w.wl(s"friend ::djinni::JniClass<$jniSelf>;")
         w.wl(s"friend $baseType;")
         w.wl
+        if (i.bases.nonEmpty && !i.ext.java)
+          w.wl(s"const ::djinni::GlobalRef<jclass> inheritanceClass_ { ::djinni::jniFindClass(${q(classLookup)}) };")
         if (i.ext.java) {
           w.wl(s"class JavaProxy final : ::djinni::JavaProxyHandle<JavaProxy>, public $cppSelf").bracedSemi {
             w.wlOutdent(s"public:")
             w.wl(s"JavaProxy(JniType j);")
             w.wl(s"~JavaProxy();")
             w.wl
-            for (m <- i.methods) {
+            for (m <- i.allMethods) {
               val ret = cppMarshal.fqReturnType(m.ret)
               val params = m.params.map(p => cppMarshal.fqParamType(p.ty) + " " + idCpp.local(p.ident))
               w.wl(s"$ret ${idCpp.method(m.ident)}${params.mkString("(", ", ", ")")} override;")
@@ -257,7 +269,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           }
           w.wl
           w.wl(s"const ::djinni::GlobalRef<jclass> clazz { ::djinni::jniFindClass(${q(classLookup)}) };")
-          for (m <- i.methods) {
+          for (m <- i.allMethods) {
             val javaMethodName = idJava.method(m.ident)
             val javaMethodSig = q(jniMarshal.javaMethodSignature(m.params, m.ret))
             w.wl(s"const jmethodID method_$javaMethodName { ::djinni::jniGetMethodID(clazz.get(), ${q(javaMethodName)}, $javaMethodSig) };")
@@ -266,7 +278,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
       }
 
       if (spec.jniUseOnLoad && i.ext.cpp) {
-        val (static, proxy) = i.methods.partition(m => m.static)
+        val (static, proxy) = i.allMethods.partition(m => m.static)
         w.wl(s"extern const JNINativeMethod ${jniSelf}ProxyRecords[${proxy.size + 1}];")
         if (static.nonEmpty) {
           w.wl(s"extern const JNINativeMethod ${jniSelf}StaticRecords[${static.size}];")
@@ -275,6 +287,30 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
     }
 
     def writeJniBody(w: IndentWriter) {
+      if (i.children.nonEmpty) {
+        w.w(s"auto $jniSelf::toCpp(JNIEnv* jniEnv, JniType j) -> CppType").braced {
+          if (spec.cppNnType.nonEmpty)
+            w.wl(s"""DJINNI_ASSERT_MSG(j, jniEnv, "$jniSelf::toCpp requires a non-null Java object");""")
+          for (d <- i.descendants) {
+            val child = jniMarshal.helperClass(d.name)
+            w.w(s"if (j && jniEnv->IsInstanceOf(j, $child::inheritanceClass()))").braced {
+              w.wl(s"return $child::toCpp(jniEnv, j);")
+            }
+          }
+          val call = s"::djinni::JniClass<$jniSelf>::get()._fromJava(jniEnv, j)"
+          val checked = spec.cppNnCheckExpression.fold(call)(check => s"$check($call)")
+          w.wl(s"return $checked;")
+        }
+        w.w(s"auto $jniSelf::fromCppOpt(JNIEnv* jniEnv, const CppOptType& c) -> ::djinni::LocalRef<JniType>").braced {
+          for (d <- i.descendants) {
+            val child = jniMarshal.helperClass(d.name)
+            w.w(s"if (auto derived = std::dynamic_pointer_cast<${cppMarshal.fqTypename(d.name, d.body)}>(c))").braced {
+              w.wl(s"return $child::fromCppOpt(jniEnv, derived);")
+            }
+          }
+          w.wl(s"return {jniEnv, ::djinni::JniClass<$jniSelf>::get()._toJava(jniEnv, c)};")
+        }
+      }
       // Defining ctor/dtor in the cpp file reduces build times
       val baseClassParam = if (i.ext.cpp) q(classLookup+"$CppProxy") else ""
       val jniSelfWithParams = jniSelf + typeParamsSignature(typeParams)
@@ -291,7 +327,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         writeJniTypeParams(w, typeParams)
         w.wl(s"$jniSelfWithParams::JavaProxy::~JavaProxy() = default;")
         w.wl
-        for (m <- i.methods) {
+        for (m <- i.allMethods) {
           val ret = cppMarshal.fqReturnType(m.ret)
           val params = m.params.map(p => cppMarshal.fqParamType(p.ty) + " c_" + idCpp.local(p.ident))
           writeJniTypeParams(w, typeParams)
@@ -345,7 +381,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
           val methodNameMunged = name.replaceAllLiterally("_", "_1")
 
           if (static)
-            s"${prefix}_$methodNameMunged"
+            prefix + (if (spec.multipleInheritance) "_00024Native_" else "_") + methodNameMunged
           else
             s"${prefix}_00024CppProxy_$methodNameMunged"
         }
@@ -378,7 +414,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         nativeHook("nativeDestroy", false, Seq.empty, None, {
           w.wl(s"delete reinterpret_cast<::djinni::CppProxyHandle<$cppSelf>*>(nativeRef);")
         })
-        for (m <- i.methods.filter(m => !m.static || m.lang.java)) {
+        for (m <- i.allMethods.filter(m => !m.static || m.lang.java)) {
           val nativeAddon = if (m.static) "" else "native_"
           nativeHook(nativeAddon + idJava.method(m.ident), m.static, m.params, m.ret, {
             //w.wl(s"::${spec.jniNamespace}::JniLocalScope jscope(jniEnv, 10);")
@@ -436,7 +472,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
         }
 
         if (spec.jniUseOnLoad) {
-          val (staticMethods, proxyMethods) = i.methods.partition(x => x.static)
+          val (staticMethods, proxyMethods) = i.allMethods.partition(x => x.static)
           nativeMethodRecord(false, proxyMethods)
           if (staticMethods.nonEmpty) {
             nativeMethodRecord(true, staticMethods)
@@ -464,11 +500,11 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
       w.wl("static void registerModuleNatives(JNIEnv* env, jclass clazz)").braced {
         for (ty <- decls.filter(ty => ty.body.asInstanceOf[Interface].ext.cpp)) {
           val i = ty.body.asInstanceOf[Interface]
-          val (statics, proxys) = i.methods.partition(i => i.static)
+          val (statics, proxys) = i.allMethods.partition(i => i.static)
 
           w.wl(s"djinni::jniRegisterNatives(env, ${q(jniMarshal.undecoratedTypename(ty.ident, ty.body) + "$CppProxy")}, ${jniMarshal.helperClass(ty.ident)}ProxyRecords);")
           if (statics.nonEmpty) {
-            w.wl(s"djinni::jniRegisterNatives(env, ${q(jniMarshal.undecoratedTypename(ty.ident, ty.body))}, ${jniMarshal.helperClass(ty.ident)}StaticRecords);")
+            w.wl(s"djinni::jniRegisterNatives(env, ${q(jniMarshal.undecoratedTypename(ty.ident, ty.body) + (if (spec.multipleInheritance) "$Native" else ""))}, ${jniMarshal.helperClass(ty.ident)}StaticRecords);")
           }
         }
       }
