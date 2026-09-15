@@ -18,14 +18,27 @@
 
 package djinni
 
-import java.io.{BufferedWriter, File, FileNotFoundException, FileWriter, IOException}
+import java.io.{BufferedWriter, File, FileNotFoundException, FileWriter, IOException, StringWriter, Writer}
 
 import djinni.generatorTools._
 
 object Main {
 
-  def main(args: Array[String]) {
+  def main(args: Array[String]): Unit = {
+    try run(args)
+    catch {
+      case scala.util.control.NonFatal(error) =>
+        System.err.println("Error: " + error.getMessage)
+        System.exit(1)
+    }
+  }
+
+  private def run(args: Array[String]) {
     var idlFile: File = null
+    var idlRoot: Option[File] = None
+    var idlProject: Option[File] = None
+    var idlExclusions = Vector.empty[String]
+    var idlManifest: Option[File] = None
     var idlIncludePaths: List[String] = List("")
     var cppOutFolder: Option[File] = None
     var cppNamespace: String = ""
@@ -138,8 +151,12 @@ object Main {
 
       override def showUsageOnError = false
       help("help")
-      opt[File]("idl").valueName("<in-file>").required().foreach(idlFile = _)
+      opt[File]("idl").valueName("<in-file>").foreach(idlFile = _)
         .text("The IDL file with the type definitions, typically with extension \".djinni\".")
+      opt[File]("idl-root").foreach(x => idlRoot = Some(x)).text("Discover and generate a complete source tree.")
+      opt[File]("idl-project").foreach(x => idlProject = Some(x)).text("Directory-mode YAML path rules and extern ownership mappings.")
+      opt[String]("idl-exclude").unbounded().foreach(x => idlExclusions :+= x).text("Exclude a root-relative glob from discovery.")
+      opt[File]("idl-manifest").foreach(x => idlManifest = Some(x)).text("Owned output manifest (default: <idl-root>/.djinni-manifest).")
       opt[String]("idl-include-path").valueName("<path> ...").optional().unbounded().foreach(x => idlIncludePaths = idlIncludePaths :+ x)
         .text("An include path to search for Djinni @import directives. Can specify multiple paths.")
       note("")
@@ -355,6 +372,16 @@ object Main {
       System.exit(1); return
     }
 
+    if ((idlFile == null) == idlRoot.isEmpty) {
+      System.err.println("Specify exactly one of --idl and --idl-root")
+      System.exit(1); return
+    }
+    if (idlRoot.isEmpty && (idlProject.nonEmpty || idlExclusions.nonEmpty || idlManifest.nonEmpty)) {
+      System.err.println("--idl-project, --idl-exclude and --idl-manifest require --idl-root")
+      System.exit(1); return
+    }
+    val tree = idlRoot.map(root => new SourceTree(root, idlProject, idlExclusions, idlManifest))
+
     val cppHeaderOutFolder = if (cppHeaderOutFolderOptional.isDefined) cppHeaderOutFolderOptional else cppOutFolder
     val jniHeaderOutFolder = if (jniHeaderOutFolderOptional.isDefined) jniHeaderOutFolderOptional else jniOutFolder
     val jniClassIdentStyle = jniClassIdentStyleOptional.getOrElse(cppIdentStyle.ty)
@@ -373,7 +400,7 @@ object Main {
 
     // Parse IDL file.
     System.out.println("Parsing...")
-    val inFileListWriter = if (inFileListPath.isDefined) {
+    val inFileListWriter: Option[Writer] = if (tree.nonEmpty && inFileListPath.nonEmpty) Some(new StringWriter()) else if (inFileListPath.isDefined) {
       if (inFileListPath.get.getParentFile != null)
         createFolder("input file list", inFileListPath.get.getParentFile)
       Some(new BufferedWriter(new FileWriter(inFileListPath.get)))
@@ -381,7 +408,7 @@ object Main {
       None
     }
     val (idl, flags) = try {
-      (new Parser(idlIncludePaths)).parseFile(idlFile, inFileListWriter)
+      tree.map(_.parse(idlIncludePaths, inFileListWriter)).getOrElse((new Parser(idlIncludePaths)).parseFile(idlFile, inFileListWriter))
     }
     catch {
       case ex @ (_: FileNotFoundException | _: IOException) =>
@@ -400,24 +427,19 @@ object Main {
       }
     }
 
-    // Resolve names in IDL file, check types.
-    System.out.println("Resolving...")
-    resolver.resolve(meta.defaults, idl, multipleInheritance) match {
-      case Some(err) =>
-        System.err.println(err)
-        System.exit(1); return
-      case _ =>
+    if (tree.isEmpty) {
+      System.out.println("Resolving...")
+      resolver.resolve(meta.defaults, idl, multipleInheritance).foreach(err => throw err.toException)
     }
-
     System.out.println("Generating...")
-    val outFileListWriter = if (outFileListPath.isDefined) {
+    val outFileListWriter: Option[Writer] = if (tree.nonEmpty && outFileListPath.nonEmpty) Some(new StringWriter()) else if (outFileListPath.isDefined) {
       if (outFileListPath.get.getParentFile != null)
         createFolder("output file list", outFileListPath.get.getParentFile)
       Some(new BufferedWriter(new FileWriter(outFileListPath.get)))
     } else {
       None
     }
-    val objcSwiftBridgingHeaderWriter = if (objcSwiftBridgingHeaderName.isDefined && objcOutFolder.isDefined) {
+    val objcSwiftBridgingHeaderWriter = if (tree.isEmpty && objcSwiftBridgingHeaderName.isDefined && objcOutFolder.isDefined) {
       val objcSwiftBridgingHeaderFile = new File(objcOutFolder.get.getPath, objcSwiftBridgingHeaderName.get + ".h")
       if (objcSwiftBridgingHeaderFile.getParentFile != null)
         createFolder("output file list", objcSwiftBridgingHeaderFile.getParentFile)
@@ -520,12 +542,23 @@ object Main {
       yamlOutFolder,
       yamlOutFile,
       yamlPrefix,
-      idlFile.getName.stripSuffix(".djinni"),
+      Option(idlFile).getOrElse(idlRoot.get).getName.stripSuffix(".djinni"),
       multipleInheritance)
 
     try {
-      val r = generate(idl, outSpec)
-      r.foreach(e => System.err.println("Error generating output: " + e))
+      val resolvedIdl = tree.map(_.resolveExterns(idl, outSpec, inFileListWriter)).getOrElse(idl)
+      if (tree.nonEmpty) {
+        System.out.println("Resolving...")
+        resolver.resolve(meta.defaults, resolvedIdl, multipleInheritance,
+          if (yamlPrefix.isEmpty) Map.empty[String, String] else resolvedIdl.collect {
+            case t: djinni.ast.InternTypeDecl => (yamlPrefix + t.ident.name) -> t.ident.name
+          }.toMap).foreach(err => throw err.toException)
+      }
+      tree match {
+        case Some(sourceTree) => sourceTree.generate(resolvedIdl, outSpec,
+          inFileListPath.zip(inFileListWriter).toSeq ++ outFileListPath.zip(outFileListWriter).toSeq)
+        case None => generate(resolvedIdl, outSpec).foreach(e => throw GenerateException(e))
+      }
     }
     finally {
       if (outFileListWriter.isDefined) {

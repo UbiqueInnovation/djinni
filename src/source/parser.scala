@@ -32,7 +32,9 @@ import scala.util.control.Breaks._
 import scala.util.parsing.combinator.RegexParsers
 import scala.util.parsing.input.{Position, Positional}
 
-case class Parser(includePaths: List[String]) {
+case class Parser(includePaths: List[String], directoryMode: Boolean = false) {
+
+val deferredExterns = mutable.LinkedHashSet[File]()
 
 val visitedFiles = mutable.Set[File]()
 val fileStack = mutable.Stack[File]()
@@ -50,7 +52,7 @@ private object IdlParser extends RegexParsers {
         new IdlFileRef(importFile(x))
       }
       case "extern" ~ x => {
-        new ExternFileRef(importFile(x))
+        new ExternFileRef(importFile(x, directoryMode))
       }
       case "protobuf" ~ x => {
         new ProtobufFileRef(importFile(x))
@@ -58,7 +60,7 @@ private object IdlParser extends RegexParsers {
     }
   }
 
-  def importFile(fileName: String): File = {
+  def importFile(fileName: String, allowMissing: Boolean = false): File = {
     var file: Option[File] = None
 
     val path = includePaths.find(path => {
@@ -68,6 +70,8 @@ private object IdlParser extends RegexParsers {
       if (exists) file = Some(tmp)
       exists
     })
+
+    if (file.isEmpty && allowMissing) return new File(fileStack.top.getParentFile, fileName)
 
     if (file.isEmpty) throw new FileNotFoundException("Unable to find file \"" + fileName + "\" at " + fileStack.top.getCanonicalPath)
 
@@ -395,7 +399,7 @@ def parseProtobufFile(protobufFile: File, inFileListWriter: Option[Writer]) : Se
 }
 
 def normalizePath(path: File) : File = {
-  return new File(java.nio.file.Paths.get(path.toString()).normalize().toString())
+  return if (directoryMode) path.getCanonicalFile else new File(java.nio.file.Paths.get(path.toString()).normalize().toString())
 }
 
 def parseFile(idlFile: File, inFileListWriter: Option[Writer]): (Seq[TypeDecl], Seq[String]) = {
@@ -428,7 +432,8 @@ def parseFile(idlFile: File, inFileListWriter: Option[Writer]): (Seq[TypeDecl], 
                 flags = f ++ flags
               }
               case ExternFileRef(file) =>
-                types = parseExternFile(normalized, inFileListWriter) ++ types
+                if (directoryMode) deferredExterns += normalized
+                else types = parseExternFile(normalized, inFileListWriter) ++ types
               case ProtobufFileRef(file) =>
                 types = parseProtobufFile(normalized, inFileListWriter) ++ types
             }

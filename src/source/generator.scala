@@ -125,7 +125,9 @@ package object generatorTools {
                    yamlOutFile: Option[String],
                    yamlPrefix: String,
                    moduleName: String,
-                   multipleInheritance: Boolean = false)
+                   multipleInheritance: Boolean = false,
+                   typeSpecs: Map[String, Spec] = Map.empty,
+                   outputTransaction: Option[TreeOutput] = None)
 
   def useProtocol(ext: Ext, spec: Spec) = ext.objc || spec.objcGenProtocol
 
@@ -268,20 +270,20 @@ package object generatorTools {
   def generate(idl: Seq[TypeDecl], spec: Spec): Option[String] = {
     try {
       if (spec.cppOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("C++", spec.cppOutFolder.get)
           createFolder("C++ header", spec.cppHeaderOutFolder.get)
         }
         new CppGenerator(spec).generate(idl)
       }
       if (spec.javaOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("Java", spec.javaOutFolder.get)
         }
         new JavaGenerator(spec).generate(idl)
       }
       if (spec.kotlinOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("Kotlin", spec.kotlinOutFolder.get)
         }
         new KotlinGenerator(spec).generate(idl)
@@ -290,7 +292,7 @@ package object generatorTools {
         spec.kotlinKmpAndroidOutFolder.isDefined ||
         spec.kotlinKmpIosOutFolder.isDefined
       if (hasKotlinKmp) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           spec.kotlinKmpCommonOutFolder.foreach(createFolder("Kotlin KMP common", _))
           spec.kotlinKmpAndroidOutFolder.foreach(createFolder("Kotlin KMP android", _))
           spec.kotlinKmpIosOutFolder.foreach(createFolder("Kotlin KMP ios", _))
@@ -298,20 +300,20 @@ package object generatorTools {
         new KotlinKmpGenerator(spec).generate(idl)
       }
       if (spec.jniOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("JNI C++", spec.jniOutFolder.get)
           createFolder("JNI C++ header", spec.jniHeaderOutFolder.get)
         }
         new JNIGenerator(spec).generate(idl)
       }
       if (spec.objcOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("Objective-C", spec.objcOutFolder.get)
         }
         new ObjcGenerator(spec).generate(idl)
       }
       if (spec.objcppOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("Objective-C++", spec.objcppOutFolder.get)
         }
         new ObjcppGenerator(spec).generate(idl)
@@ -322,19 +324,19 @@ package object generatorTools {
         new SwiftBridgingHeaderGenerator(spec).generate(idl)
       }
       if (spec.wasmOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("WASM", spec.wasmOutFolder.get)
         }
         new WasmGenerator(spec).generate(idl)
       }
       if (spec.tsOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("TypeScript", spec.tsOutFolder.get)
         }
         new TsGenerator(spec).generate(idl)
       }
       if (spec.yamlOutFolder.isDefined) {
-        if (!spec.skipGeneration) {
+        if (!spec.skipGeneration && spec.outputTransaction.isEmpty) {
           createFolder("YAML", spec.yamlOutFolder.get)
         }
         new YamlGenerator(spec).generate(idl)
@@ -373,6 +375,15 @@ abstract class Generator(spec: Spec)
           throw GenerateException("Refusing to write \"" + file.getPath + "\"; we already wrote a file to a path that is the same when lower-cased: \"" + existing + "\".")
         }
       case _ =>
+    }
+
+    if (spec.outputTransaction.isDefined) {
+      val buffer = new ByteArrayOutputStream()
+      val out = new OutputStreamWriter(buffer, "UTF-8")
+      f(makeWriter(out))
+      out.flush()
+      spec.outputTransaction.get.add(file, buffer.toByteArray)
+      return
     }
 
     val fout = new FileOutputStream(file)

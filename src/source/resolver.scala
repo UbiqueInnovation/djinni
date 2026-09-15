@@ -34,7 +34,7 @@ package object resolver {
 
 type Scope = immutable.Map[String,Meta]
 
-def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = false): Option[Error] = {
+def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = false, aliases: Map[String, String] = Map.empty): Option[Error] = {
 
   try {
     var topScope = metas
@@ -59,6 +59,12 @@ def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = fal
         case td: ExternTypeDecl => YamlGenerator.metaFromYaml(td)
         case td: ProtobufTypeDecl => MProtobuf(td.ident.name, 0, td.body.asInstanceOf[ProtobufMessage])
       })
+    }
+
+    for ((alias, name) <- aliases.toSeq.sortBy(_._1)) {
+      if (topScope.contains(alias))
+        throw Error(idl.find(_.ident.name == name).get.ident.loc, "local YAML alias conflicts with a definition: " + alias).toException
+      topScope = topScope.updated(alias, topScope(name))
     }
 
     // Resolve everything
@@ -87,11 +93,11 @@ def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = fal
           throw Error(td.ident.loc, "multiple parents require --multiple-inheritance true").toException
         val parents = new DupeChecker("parent")
         for (ref <- i.bases) {
-          parents.check(ref.expr.ident)
           val parent = ref.resolved.base match {
             case d: MDef if d.defType == DInterface => d
             case _ => throw Error(ref.expr.ident.loc, "base must be an IDL interface (use @import, not @extern)").toException
           }
+          parents.check(ref.expr.ident.copy(name = parent.name))
           if (td.params.nonEmpty || parent.numParams != 0)
             throw Error(ref.expr.ident.loc, "generic interface inheritance is not supported").toException
           inherit(idl.find(_.ident.name == parent.name).get)
@@ -105,7 +111,7 @@ def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = fal
         val members = new DupeChecker("method")
         val ancestors = mutable.Set[String]()
         def checkMembers(body: Interface): Unit = {
-          for (ref <- body.bases if ancestors.add(ref.expr.ident.name))
+          for (ref <- body.bases if ancestors.add(ref.resolved.base.asInstanceOf[MDef].name))
             checkMembers(ref.resolved.base.asInstanceOf[MDef].body.asInstanceOf[Interface])
           body.methods.foreach(m => members.check(m.ident))
           body.consts.foreach(c => members.check(c.ident))

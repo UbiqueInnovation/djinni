@@ -108,14 +108,27 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
     f(tm) + (if (addNullability) nullityAnnotation(tm) else "")
   }
 
-  case class TsSymbolRef(sym: String, module: String)
+  case class TsSymbolRef(sym: String, module: String, typeOnly: Boolean = true)
   def references(m: Meta): Seq[TsSymbolRef] = m match {
-    case e: MExtern => List(TsSymbolRef(idJs.ty(e.name), e.ts.module))
+    case d: MDef if spec.typeSpecs.contains(d.name) =>
+      val target = spec.typeSpecs(d.name)
+      if (target.tsOutFolder == spec.tsOutFolder && target.tsModule == spec.tsModule) Nil
+      else {
+        val module = if (spec.tsImportPrefix.startsWith(".")) {
+          val from = spec.tsOutFolder.get.toPath.toAbsolutePath.normalize()
+          val to = new File(target.tsOutFolder.get, target.tsModule).toPath.toAbsolutePath.normalize()
+          val relative = from.relativize(to).toString.replace(File.separatorChar, '/')
+          if (relative.startsWith(".")) relative else "./" + relative
+        } else target.tsImportPrefix + target.tsModule
+        List(TsSymbolRef(idJs.ty(d.name), module, d.defType != DEnum))
+      }
+    case e: MExtern => List(TsSymbolRef(idJs.ty(e.name), e.ts.module, spec.typeSpecs.isEmpty || e.defType != DEnum))
     case MProtobuf(name, _, ProtobufMessage(_,_,_,Some(ts))) => List(TsSymbolRef(name, ts.module))
     case _ => List()
   }
   class TsRefs() {
     var imports = scala.collection.mutable.Map[String, TreeSet[String]]()
+    val valueImports = scala.collection.mutable.Map[String, TreeSet[String]]()
 
     def find(ty: TypeRef) { find(ty.resolved) }
     def find(tm: MExpr) {
@@ -123,8 +136,9 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
       find(tm.base)
     }
     def find(m: Meta) = for(r <- references(m)) r match {
-      case TsSymbolRef(sym, module) => {
-        var syms = imports.getOrElseUpdate(module, TreeSet[String]())
+      case TsSymbolRef(sym, module, typeOnly) => {
+        val target = if (typeOnly) imports else valueImports
+        val syms = target.getOrElseUpdate(module, TreeSet[String]())
         syms += (sym)
       }
       case _ =>
@@ -138,7 +152,7 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
       case d: Double => w.w(d.toString)
       case b: Boolean => w.w(if (b) "true" else "false")
       case s: String => w.w(s)
-      case e: EnumValue => w.w(s"${idJs.ty(ty.expr.ident)}.${idJs.enum(e)}")
+      case e: EnumValue => w.w(s"${if (spec.typeSpecs.isEmpty) idJs.ty(ty.expr.ident) else toTsType(ty.resolved, false)}.${idJs.enum(e)}")
       case v: ConstRef => w.w(s"${idJs.const(v)}")
       case z: Any => { // Value is record
         val recordMdef = ty.resolved.base.asInstanceOf[MDef]
@@ -239,7 +253,8 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
           r.consts.foreach(c => refs.find(c.ty))
         }
         case i: Interface => {
-          i.methods.foreach(m => {
+          i.bases.foreach(refs.find)
+          i.allMethods.foreach(m => {
             m.params.foreach(p => refs.find(p.ty))
             m.ret.foreach(refs.find)
           })
@@ -248,9 +263,11 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
         case _ =>
       }
       // write external references
-      for ((module, syms) <- refs.imports) {
+      val imports = refs.imports.toSeq.map { case (m, s) => (m, true, s) } ++
+        refs.valueImports.toSeq.map { case (m, s) => (m, false, s) }
+      for ((module, typeOnly, syms) <- (if (spec.typeSpecs.isEmpty) imports else imports.sortBy(x => (x._1, x._2)))) {
         if (module != "") {
-          w.wl(s"""import type { ${syms.mkString(", ")} } from "$module"""")
+          w.wl(s"""import ${if (typeOnly) "type " else ""}{ ${syms.mkString(", ")} } from "$module"""")
         }
       }
 
@@ -266,6 +283,8 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
         }
         case _ =>
       }
+      val moduleType = idJs.ty(spec.tsModule) +
+        (if (spec.typeSpecs.nonEmpty && interfacesWithStatics.contains(idJs.ty(spec.tsModule))) "Module" else "")
       // add static factories
       w.wl
       if (!spec.wasmOmitNsAlias && !spec.wasmNamespace.isEmpty) {
@@ -281,7 +300,7 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
             w.wl(i + ": " + i + "_statics;")
           }
         }
-        w.w(s"export interface ${idJs.ty(spec.tsModule)}_statics").braced {
+        w.w(s"export interface ${moduleType}_statics").braced {
           for (i <- interfacesWithStatics.toList) {
             w.wl(withWasmNamespace(i) + ": " + i + "_statics;")
           }
@@ -289,7 +308,7 @@ class TsGenerator(spec: Spec) extends Generator(spec) {
           w.wl(s"${nsParts.head}: ns_${nsParts.head};")
         }
       } else {
-        w.w(s"export interface ${idJs.ty(spec.tsModule)}_statics").braced {
+        w.w(s"export interface ${moduleType}_statics").braced {
           for (i <- interfacesWithStatics.toList) {
             w.wl(withWasmNamespace(i) + ": " + i + "_statics;")
           }

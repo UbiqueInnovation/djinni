@@ -54,7 +54,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
       // We're not doing anything complicated anyway and it's good to have human readable output.
       for(td <- tds) {
         w.wl("---")
-        write(w, td)
+        new YamlGenerator(spec.typeSpecs.getOrElse(td.ident.name, spec)).write(w, td)
       }
     })
   }

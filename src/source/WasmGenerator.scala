@@ -274,6 +274,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
   }
 
   override def generateInterface(origin: String, ident: Ident, doc: Doc, typeParams: Seq[TypeParam], i: Interface) {
+    val descendants = i.descendants.filter(d => spec.typeSpecs.get(d.name).forall(_.wasmOutFolder.nonEmpty))
     val refs = new WasmRefs(ident.name)
     i.consts.foreach(c => refs.find(c.ty))
     i.allMethods.foreach(m => {
@@ -281,7 +282,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
       m.ret.foreach(refs.find)
     })
 
-    if (spec.multipleInheritance) i.descendants.foreach(d => refs.find(MExpr(d, Seq.empty)))
+    if (spec.multipleInheritance) descendants.foreach(d => refs.find(MExpr(d, Seq.empty)))
 
     val cls = withNs(Some(spec.cppNamespace), idCpp.ty(ident))
     val helper = helperClass(ident)
@@ -354,10 +355,10 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
       if (spec.multipleInheritance) {
         w.w(s"auto $helper::toCpp(JsType j) -> CppType").braced {
           w.w("if (j.isNull() || j.isUndefined())").braced { w.wl("return {};") }
-          if (i.descendants.nonEmpty) {
+          if (descendants.nonEmpty) {
             w.wl("const auto nativeType = j[\"_djinni_native_type\"];")
             w.w("if (!nativeType.isUndefined())").braced {
-              for (d <- i.descendants) {
+              for (d <- descendants) {
                 val tag = q(withWasmNamespace(idJs.ty(d.name)))
                 w.w(s"if (nativeType.strictlyEquals(em::val($tag)))").braced {
                   w.wl(s"return ${helperClass(d.name)}::toCpp(j);")
@@ -368,7 +369,7 @@ class WasmGenerator(spec: Spec) extends Generator(spec) {
           w.wl("return _fromJs(j);")
         }
         w.w(s"auto $helper::fromCppOpt(const CppOptType& c) -> JsType").braced {
-          for (d <- i.descendants) {
+          for (d <- descendants) {
             w.w(s"if (auto derived = std::dynamic_pointer_cast<${cppMarshal.fqTypename(d.name, d.body)}>(c))").braced {
               w.wl(s"return ${helperClass(d.name)}::fromCppOpt(derived);")
             }
