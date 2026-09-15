@@ -96,7 +96,9 @@ def resolve(metas: Scope, idl: Seq[TypeDecl], multipleInheritance: Boolean = fal
             throw Error(ref.expr.ident.loc, "generic interface inheritance is not supported").toException
           inherit(idl.find(_.ident.name == parent.name).get)
           val b = parent.body.asInstanceOf[Interface]
-          if (i.ext != b.ext)
+          val nativeChild = multipleInheritance && i.ext.cpp && b.ext.cpp &&
+            !i.ext.java && !i.ext.objc && !i.ext.js
+          if (i.ext != b.ext && !nativeChild)
             throw Error(ref.expr.ident.loc, "inherited interfaces must have the same implementation language modifiers").toException
           b.children :+= topScope(td.ident.name).asInstanceOf[MDef]
         }

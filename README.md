@@ -121,9 +121,11 @@ are forwarded by generated proxies, including through several ancestor
 levels. C++, Java, Kotlin, Objective-C protocols/classes (and their Swift
 imports), Kotlin Multiplatform, and TypeScript retain the parent relationship.
 
-Parent and child must use the same implementation-language modifiers. Cycles
-and redeclarations of inherited method or constant names are rejected. This
-supports parents from the same IDL or an `@import`, with no type parameters
+Parent and child must use the same implementation-language modifiers, except
+that `--multiple-inheritance true` permits a C++-only child of a parent that
+supports C++ implementations. Such a child can keep static factory methods
+while the parent also allows platform implementations. Cycles and redeclarations
+of inherited method or constant names are rejected. This supports parents from the same IDL or an `@import`, with no type parameters
 on either interface. Extern YAML interfaces do not contain the method definitions needed to serve as a
 parent. Regenerate the whole hierarchy together so bridges know its child types.
 Static methods and constants remain declared on their owning interface.
