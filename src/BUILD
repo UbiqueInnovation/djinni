@@ -11,3 +11,10 @@ scala_binary(
     ],
     visibility = ["//visibility:public"],
 )
+
+sh_test(
+    name = "interface_exposure_test",
+    srcs = ["interface_exposure_test.sh"],
+    args = ["$(location :djinni)"],
+    data = [":djinni"],
+)
