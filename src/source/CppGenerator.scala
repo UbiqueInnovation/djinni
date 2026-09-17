@@ -28,6 +28,8 @@ import scala.collection.mutable
 
 class CppGenerator(spec: Spec) extends Generator(spec) {
 
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.cpp
+
   val marshal = new CppMarshal(spec)
 
   val writeCppFile = writeCppFileGeneric(spec.cppOutFolder.get, spec.cppNamespace, spec.cppFileIdentStyle, spec.cppIncludePrefix) _

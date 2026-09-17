@@ -22,6 +22,8 @@ import djinni.ast._
 import djinni.generatorTools._
 
 class SwiftBridgingHeaderGenerator(spec: Spec) extends Generator(spec) {
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.objc
+
   val marshal = new ObjcMarshal(spec)
 
   override def generateEnum(origin: String, ident: Ident, doc: Doc, e: Enum) {

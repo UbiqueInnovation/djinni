@@ -265,6 +265,10 @@ Things to note:
 
 ### Interface
 
+Interfaces are implemented and exposed in every language by default. A `+` modifier list
+selects implementation languages, while `-` modifiers omit the interface from generated output
+for those languages. For example, `interface +c -j` is implemented in C++ but not exposed to Java.
+
 #### Special Methods for C++ Only
 `+c` interfaces (implementable only in C++) can have methods flagged with the special keywords const and static which have special effects in C++:
 

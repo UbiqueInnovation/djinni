@@ -46,6 +46,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         // Skip externs to avoid overwriting real definitions from their owning IDL file.
       } else {
         td.body match {
+          case i: Interface if !i.exposed.java || !i.exposed.objc =>
           case _: Record | _: Enum | _: Interface =>
             val name = canonicalName(td)
             byName.get(name) match {

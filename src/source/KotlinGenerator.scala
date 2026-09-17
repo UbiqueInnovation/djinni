@@ -10,6 +10,8 @@ import scala.collection.mutable
 
 class KotlinGenerator(spec: Spec) extends Generator(spec) {
 
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.java
+
   val javaAnnotationHeader = spec.javaAnnotation.map(pkg => '@' + pkg.split("\\.").last)
   val marshal = new KotlinMarshal(spec)
 

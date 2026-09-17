@@ -35,6 +35,7 @@ djinni-output-temp/cpp/interface_using_extended_record.hpp
 djinni-output-temp/cpp/interface_using_extended_record.cpp
 djinni-output-temp/cpp/objc_only_listener.hpp
 djinni-output-temp/cpp/java_only_listener.hpp
+djinni-output-temp/cpp/cpp_only_unexposed.hpp
 djinni-output-temp/cpp/uses_single_language_listeners.hpp
 djinni-output-temp/cpp/first_listener.hpp
 djinni-output-temp/cpp/second_listener.hpp

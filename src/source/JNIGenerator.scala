@@ -27,6 +27,8 @@ import scala.collection.mutable
 
 class JNIGenerator(spec: Spec) extends Generator(spec) {
 
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.java
+
   val jniMarshal = new JNIMarshal(spec)
   val cppMarshal = new CppMarshal(spec)
   val javaMarshal = new JavaMarshal(spec)

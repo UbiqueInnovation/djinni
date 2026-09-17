@@ -28,6 +28,8 @@ import java.util.regex.Matcher
 
 class WasmGenerator(spec: Spec) extends Generator(spec) {
 
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.js
+
   val cppMarshal = new CppMarshal(spec)
 
   private def wasmFilenameStyle(name: String): String = {

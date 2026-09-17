@@ -352,6 +352,8 @@ package object generatorTools {
 
 abstract class Generator(spec: Spec)
 {
+  protected def exposeInterface(i: Interface): Boolean = true
+
   protected val writtenFiles = mutable.HashMap[String,String]()
 
   protected def createFile(folder: File, fileName: String, makeWriter: OutputStreamWriter => IndentWriter, f: IndentWriter => Unit): Unit = {
@@ -452,7 +454,10 @@ abstract class Generator(spec: Spec)
   }
 
   def generate(idl: Seq[TypeDecl]) {
-    val decls = idl.collect { case itd: InternTypeDecl => itd }
+    val decls = idl.collect { case itd: InternTypeDecl if (itd.body match {
+      case i: Interface => exposeInterface(i)
+      case _ => true
+    }) => itd }
     for (td <- decls) td.body match {
       case e: Enum =>
         assert(td.params.isEmpty)

@@ -28,6 +28,8 @@ import scala.collection.mutable
 
 class JavaGenerator(spec: Spec) extends Generator(spec) {
 
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.java
+
   val javaAnnotationHeader = spec.javaAnnotation.map(pkg => '@' + pkg.split("\\.").last)
   val javaNullableAnnotation = spec.javaNullableAnnotation.map(pkg => '@' + pkg.split("\\.").last)
   val javaNonnullAnnotation = spec.javaNonnullAnnotation.map(pkg => '@' + pkg.split("\\.").last)
