@@ -293,9 +293,12 @@ private def resolveInterface(scope: Scope, i: Interface) {
     dupeChecker.check(m.ident)
     for (p <- m.params) {
       resolveRef(scope, p.ty)
+      checkExposure(i, p.ty, m.ident)
     }
     m.ret match {
-      case Some(ty) => resolveRef(scope, ty)
+      case Some(ty) =>
+        resolveRef(scope, ty)
+        checkExposure(i, ty, m.ident)
       case _ =>
     }
   }
@@ -304,6 +307,29 @@ private def resolveInterface(scope: Scope, i: Interface) {
     dupeChecker.check(c.ident)
     resolveRef(scope, c.ty)
   }
+}
+
+private def checkExposure(owner: Interface, ref: TypeRef, method: Ident) {
+  def check(tm: MExpr): Unit = {
+    tm.args.foreach(check)
+    val target = tm.base match {
+      case d: MDef if d.defType == DInterface => Some((d.name, d.body.asInstanceOf[Interface]))
+      case e: MExtern if e.defType == DInterface => Some((e.name, e.body.asInstanceOf[Interface]))
+      case _ => None
+    }
+    target.foreach { case (name, interface) =>
+      val hidden = Seq(
+        "c" -> (owner.exposed.cpp && !interface.exposed.cpp),
+        "j" -> (owner.exposed.java && !interface.exposed.java),
+        "o" -> (owner.exposed.objc && !interface.exposed.objc),
+        "w" -> (owner.exposed.js && !interface.exposed.js)
+      ).collect { case (language, true) => "-" + language }
+      if (hidden.nonEmpty) {
+        throw Error(method.loc, s"""Interface "$name" is excluded with ${hidden.mkString(", ")} but is used by this method""").toException
+      }
+    }
+  }
+  check(ref.resolved)
 }
 
 private def resolveRef(scope: Scope, r: TypeRef) {

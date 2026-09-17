@@ -85,37 +85,29 @@ private object IdlParser extends RegexParsers {
     case doc~ident~typeParams~_~body => InternTypeDecl(ident, typeParams, body, doc, origin)
   }
 
-  def ext(default: Ext) = (rep1("+" ~> ident) >> checkExts) | success(default)
+  def ext(default: Ext) = (rep1("+" ~> ident) >> (checkExts(_, false, true))) | success(default)
+  def exposure = (rep1("-" ~> ident) >> (checkExts(_, true, false))) | success(Ext(true, true, true, true))
   def extRecord = ext(Ext(false, false, false, false))
   def extInterface = ext(Ext(true, true, true, true))
   def supportLang = ext(Ext(true, true, true, true))
 
-  def checkExts(parts: List[Ident]): Parser[Ext] = {
-    var foundCpp = false
-    var foundJava = false
-    var foundObjc = false
-    var foundJavascript = false
+  def checkExts(parts: List[Ident], initial: Boolean, enabled: Boolean): Parser[Ext] = {
+    var foundCpp = initial
+    var foundJava = initial
+    var foundObjc = initial
+    var foundJavascript = initial
+    val seen = mutable.Set[String]()
 
-    for (part <- parts)
+    for (part <- parts) {
+      if (!seen.add(part.name)) return err("Found multiple \"" + part.name + "\" modifiers.")
       part.name match {
-        case "c" => {
-          if (foundCpp) return err("Found multiple \"c\" modifiers.")
-          foundCpp = true
-        }
-        case "j" => {
-          if (foundJava) return err("Found multiple \"j\" modifiers.")
-          foundJava = true
-        }
-        case "o" => {
-          if (foundObjc) return err("Found multiple \"o\" modifiers.")
-          foundObjc = true
-        }
-        case "w" => {
-          if (foundJavascript) return err("Found multiple \"w\" modifiers.")
-          foundJavascript = true
-        }
+        case "c" => foundCpp = enabled
+        case "j" => foundJava = enabled
+        case "o" => foundObjc = enabled
+        case "w" => foundJavascript = enabled
         case _ => return err("Invalid modifier \"" + part.name + "\"")
       }
+    }
     success(Ext(foundJava, foundCpp, foundObjc, foundJavascript))
   }
 
@@ -164,12 +156,12 @@ private object IdlParser extends RegexParsers {
     case doc~ident~Some("none") => Enum.Option(ident, doc, Some(Enum.SpecialFlag.NoFlags))
   }
 
-  def interfaceHeader = "interface" ~> extInterface
+  def interfaceHeader = "interface" ~> extInterface ~ exposure
   def interface: Parser[Interface] = interfaceHeader ~ bracesList(method | const) ^^ {
-    case ext~items => {
+    case (ext~exposed)~items => {
       val methods = items collect {case m: Method => m}
       val consts = items collect {case c: Const => c}
-      Interface(ext, methods, consts)
+      Interface(ext, methods, consts, exposed)
     }
   }
 
@@ -177,7 +169,7 @@ private object IdlParser extends RegexParsers {
   def externEnum: Parser[Enum] = enumHeader ^^ { case _ => Enum(List(), false) }
   def externFlags: Parser[Enum] = flagsHeader ^^ { case _ => Enum(List(), true) }
   def externRecord: Parser[Record] = recordHeader ~ opt(deriving) ^^ { case ext~deriving => Record(ext, List(), List(), deriving.getOrElse(Set[DerivingType]())) }
-  def externInterface: Parser[Interface] = interfaceHeader ^^ { case ext => Interface(ext, List(), List()) }
+  def externInterface: Parser[Interface] = interfaceHeader ^^ { case ext~exposed => Interface(ext, List(), List(), exposed) }
 
   def staticLabel: Parser[Boolean] = ("static ".r | "".r) ^^ {
     case "static " => true

@@ -116,6 +116,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
 
   private def typeDef(td: TypeDecl) = {
     def ext(e: Ext): String = (if(e.cpp) " +c" else "") + (if(e.objc) " +o" else "") + (if(e.java) " +j" else "") + (if(e.js) " +w" else "")
+    def hidden(e: Ext): String = (if(!e.cpp) " -c" else "") + (if(!e.objc) " -o" else "") + (if(!e.java) " -j" else "") + (if(!e.js) " -w" else "")
     def deriving(r: Record) = {
       if(r.derivingTypes.isEmpty) {
         ""
@@ -129,7 +130,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
       }
     }
     td.body match {
-      case i: Interface => "interface" + ext(i.ext)
+      case i: Interface => "interface" + ext(i.ext) + hidden(i.exposed)
       case r: Record => "record" + ext(r.ext) + deriving(r)
       case p: ProtobufMessage => "protobuf"
       case Enum(_, false) => "enum"
@@ -154,7 +155,7 @@ class YamlGenerator(spec: Spec) extends Generator(spec) {
       // "generic" -> false,
       "hash" -> QuotedString("%s.hash"))
     td.body match {
-      case Interface(_,_,_) =>
+      case Interface(_,_,_,_) =>
         if (spec.objcGenProtocol)
           map + ("protocol" -> spec.objcGenProtocol)
         else

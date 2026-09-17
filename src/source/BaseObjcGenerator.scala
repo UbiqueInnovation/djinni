@@ -29,6 +29,8 @@ import scala.collection.mutable
 import scala.collection.parallel.immutable
 
 abstract class BaseObjcGenerator(spec: Spec) extends Generator(spec) {
+  override protected def exposeInterface(i: Interface): Boolean = i.exposed.objc
+
 
   val marshal = new ObjcMarshal(spec)
 
@@ -116,4 +118,3 @@ abstract class BaseObjcGenerator(spec: Spec) extends Generator(spec) {
     }
   }
 }
-
