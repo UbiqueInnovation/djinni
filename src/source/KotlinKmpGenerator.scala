@@ -1220,7 +1220,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
         for (m <- i.methods) {
           val params = m.params.indices.map(n => s"p$n: dynamic").mkString(", ")
           val args = m.params.zipWithIndex.map { case (p, n) => fromJs(p.ty.resolved, s"p$n") }
-          w.wl(s"""result["${idJs.method(m.ident)}"] = { $params${if (params.nonEmpty) " ->" else ""}""")
+          w.wl(s"""result["${idJs.method(m.ident)}"] = {${if (params.nonEmpty) " " + params + " ->" else ""}""")
           w.increase()
           val call = s"value.${idJava.method(m.ident)}(${args.mkString(", ")})"
           m.ret match {
