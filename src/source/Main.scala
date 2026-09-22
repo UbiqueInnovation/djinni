@@ -56,6 +56,7 @@ object Main {
     var kotlinOutFolder: Option[File] = None
     var kotlinKmpCommonOutFolder: Option[File] = None
     var kotlinKmpAndroidOutFolder: Option[File] = None
+    var kotlinKmpJsOutFolder: Option[File] = None
     var kotlinKmpIosOutFolder: Option[File] = None
     var kotlinKmpPackage: Option[String] = None
     var kotlinKmpIosModule: Option[String] = None
@@ -175,6 +176,8 @@ object Main {
         .text("The output for Kotlin KMP commonMain files (Generator disabled if unspecified).")
       opt[File]("kotlin-kmp-android-out").valueName("<out-folder>").foreach(x => kotlinKmpAndroidOutFolder = Some(x))
         .text("The output for Kotlin KMP androidMain files (Generator disabled if unspecified).")
+      opt[File]("kotlin-kmp-js-out").valueName("<out-folder>").foreach(x => kotlinKmpJsOutFolder = Some(x))
+        .text("The output for Kotlin KMP jsMain bindings to the Djinni WASM JavaScript API.")
       opt[File]("kotlin-kmp-ios-out").valueName("<out-folder>").foreach(x => kotlinKmpIosOutFolder = Some(x))
         .text("The output for Kotlin KMP iosMain files (Generator disabled if unspecified).")
       opt[String]("kotlin-kmp-package").valueName("<package>").foreach(x => kotlinKmpPackage = Some(x))
@@ -443,6 +446,7 @@ object Main {
       kotlinKmpCommonOutFolder,
       kotlinKmpAndroidOutFolder,
       kotlinKmpIosOutFolder,
+      kotlinKmpJsOutFolder,
       kotlinKmpPackage,
       kotlinKmpIosModule,
       kotlinKmpBridgePrefix,

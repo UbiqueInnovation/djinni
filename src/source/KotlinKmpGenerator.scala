@@ -23,6 +23,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   private def syntheticIdent(name: String): Ident = Ident(name, syntheticFile, Loc(syntheticFile, 0, 0))
 
   override def generate(idl: Seq[TypeDecl]) {
+    spec.kotlinKmpJsOutFolder.foreach(generateJsRuntime)
     for (td <- selectDecls(idl)) {
       td.body match {
         case r: Record => generateRecord(td, r)
@@ -271,6 +272,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     val origin = td.origin
     val conversionImports = conversionImportsForRecord(r)
 
+    spec.kotlinKmpJsOutFolder.foreach(folder => generateJsRecord(folder, td, r))
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
         w.w(s"expect class $name$typeParams(")
@@ -403,6 +405,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     val name = kmpTypeName(td)
     val origin = td.origin
 
+    spec.kotlinKmpJsOutFolder.foreach(folder => generateJsEnum(folder, td, e))
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
         w.w(s"expect enum class $name")
@@ -487,6 +490,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     val classKind = !kmpImplementable || hasStatics
     val conversionImports = conversionImportsForInterface(i)
 
+    spec.kotlinKmpJsOutFolder.foreach(folder => generateJsInterface(folder, td, i, classKind))
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
         if (classKind) {
@@ -1058,6 +1062,177 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
       }
     }
     f(tm)
+  }
+
+  // JavaScript values use the existing Djinni WASM ABI, not Kotlin's mangled JS ABI.
+  private def jsRuntime = kmpBridgePrefix + "DjinniJs"
+
+  private def generateJsRuntime(folder: File): Unit = {
+    writeKotlinFile(folder, s"$jsRuntime.kt", "KotlinKmpGenerator", w => {
+      w.wl(s"object $jsRuntime {")
+      w.wl("    private var module: dynamic = null")
+      w.wl("    /** Register the initialized Emscripten module before calling static factories. */")
+      w.wl("    fun initialize(module: dynamic) { require(module != null); this.module = module }")
+      w.wl("    internal fun requireModule(): dynamic {")
+      w.wl("        check(module != null) { \"Initialize the Djinni JS module before using static factories\" }")
+      w.wl("        return module")
+      w.wl("    }")
+      w.wl("    private val proxies: dynamic = js(\"new WeakMap()\")")
+      w.wl("    internal fun proxy(owner: Any, type: String, create: () -> dynamic): dynamic {")
+      w.wl("        var entries = proxies.get(owner)")
+      w.wl("        if (entries == null) { entries = js(\"Object.create(null)\"); proxies.set(owner, entries) }")
+      w.wl("        if (entries[type] == null) entries[type] = create()")
+      w.wl("        return entries[type]")
+      w.wl("    }")
+      w.wl("    internal fun <T> optional(value: dynamic, convert: (dynamic) -> T): T? = if (value == null) null else convert(value)")
+      w.wl("    internal fun typedArray(kind: String, values: Array<dynamic>): dynamic = js(\"new globalThis[kind](values)\")")
+      w.wl("    internal fun set(values: Array<dynamic>): dynamic = js(\"new Set(values)\")")
+      w.wl("    internal fun map(values: Array<dynamic>): dynamic = js(\"new Map(values)\")")
+      w.wl("    internal fun array(value: dynamic): Array<dynamic> = js(\"Array.from(value)\")")
+      w.wl("    internal fun bigInt(value: Long): dynamic { val text = value.toString(); return js(\"BigInt(text)\") }")
+      w.wl("    internal fun bytes(value: ByteArray): dynamic { val result = js(\"new Uint8Array(value.length)\"); for (i in value.indices) result[i] = value[i].toInt() and 255; return result }")
+      w.wl("}")
+    })
+  }
+
+  private def jsConversionName(tm: MExpr): String = tm.base match {
+    case e: MExtern => externKmpFqTypeName(e)
+    case d: MDef => kmpBridgePrefix + idJava.ty(d.name)
+    case _ => throw new AssertionError("Expected named JS type")
+  }
+
+  private def toJs(tm: MExpr, expr: String): String = tm.base match {
+    case MOptional => s"""($expr)?.let { value -> ${toJs(tm.args.head, "value")} } ?: js("undefined")"""
+    case p: MPrimitive if p.kName == "Long" => s"$jsRuntime.bigInt($expr)"
+    case _: MPrimitive | MString => expr
+    case MBinary => s"$jsRuntime.bytes($expr)"
+    case MArray =>
+      val values = s"($expr).map { element -> ${toJs(tm.args.head, "element")} }.toTypedArray()"
+      val arrays = Map("Byte" -> "Int8Array", "Short" -> "Int16Array", "Int" -> "Int32Array", "Long" -> "BigInt64Array", "Float" -> "Float32Array", "Double" -> "Float64Array")
+      tm.args.head.base match {
+        case p: MPrimitive if arrays.contains(p.kName) => s"""$jsRuntime.typedArray("${arrays(p.kName)}", $values)"""
+        case _ => values
+      }
+    case MList => s"($expr).map { element -> ${toJs(tm.args.head, "element")} }.toTypedArray()"
+    case MSet => s"$jsRuntime.set(($expr).map { element -> ${toJs(tm.args.head, "element")} }.toTypedArray())"
+    case MMap => s"$jsRuntime.map(($expr).map { (key, value) -> arrayOf<dynamic>(${toJs(tm.args.head, "key")}, ${toJs(tm.args(1), "value")}) }.toTypedArray())"
+    case e: MExtern if e.name == "future" => s"${jsConversionName(tm)}ToJs($expr) { item -> ${toJs(tm.args.head, "item")} }"
+    case _: MDef | _: MExtern => s"${jsConversionName(tm)}ToJs($expr)"
+    case _: MParam => expr
+    case _ => throw new IllegalArgumentException("Unsupported Kotlin/JS type: " + tm)
+  }
+
+  private def fromJs(tm: MExpr, expr: String): String = tm.base match {
+    case MOptional => s"$jsRuntime.optional($expr) { value -> ${fromJs(tm.args.head, "value")} }"
+    case p: MPrimitive if p.kName == "Long" => s"(($expr).toString() as String).toLong()"
+    case p: MPrimitive if Set("Byte", "Short", "Int", "Float", "Double").contains(p.kName) => s"($expr as Number).to${p.kName}()"
+    case p: MPrimitive => s"($expr as ${p.kName})"
+    case MString => s"($expr as String)"
+    case MBinary => s"$jsRuntime.array($expr).map { (it as Number).toByte() }.toByteArray()"
+    case MList => s"$jsRuntime.array($expr).map { element -> ${fromJs(tm.args.head, "element")} }"
+    case MArray => s"$jsRuntime.array($expr).map { element -> ${fromJs(tm.args.head, "element")} }.toTypedArray()"
+    case MSet => s"$jsRuntime.array($expr).map { element -> ${fromJs(tm.args.head, "element")} }.toHashSet()"
+    case MMap => s"$jsRuntime.array($expr).associate { entry -> ${fromJs(tm.args.head, "entry[0]")} to ${fromJs(tm.args(1), "entry[1]")} }.let { HashMap(it) }"
+    case e: MExtern if e.name == "future" => s"${jsConversionName(tm)}FromJs($expr) { item: dynamic -> ${fromJs(tm.args.head, "item")} }"
+    case _: MDef | _: MExtern => s"${jsConversionName(tm)}FromJs($expr)"
+    case _: MParam => s"($expr as ${kmpType(tm)})"
+    case _ => throw new IllegalArgumentException("Unsupported Kotlin/JS type: " + tm)
+  }
+
+  private def generateJsRecord(folder: File, td: TypeDecl, r: Record): Unit = {
+    val name = kmpTypeName(td)
+    val tp = typeParamDecl(td.params)
+    val funTp = if (tp.isEmpty) "" else tp + " "
+    writeKotlinFile(folder, s"$name.kt", td.origin, w => {
+      w.wl(s"actual class $name$tp actual constructor(${r.fields.map(f => s"actual val ${idJava.field(f.ident)}: ${kmpFieldType(f.ty.resolved)}").mkString(", ")})")
+      w.wl(s"fun $funTp${name}ToJs(value: $name$tp): dynamic {")
+      w.wl("    val result = js(\"({})\")")
+      for (f <- r.fields) w.wl(s"""    result["${idJs.field(f.ident)}"] = ${toJs(f.ty.resolved, "value." + idJava.field(f.ident))}""")
+      w.wl("    return result")
+      w.wl("}")
+      w.wl(s"fun $funTp${name}FromJs(value: dynamic): $name$tp = $name(")
+      for (f <- r.fields) w.wl(s"""    ${fromJs(f.ty.resolved, "value[\"" + idJs.field(f.ident) + "\"]")},""")
+      w.wl(")")
+    })
+  }
+
+  private def generateJsEnum(folder: File, td: TypeDecl, e: Enum): Unit = {
+    val name = kmpTypeName(td)
+    writeKotlinFile(folder, s"$name.kt", td.origin, w => {
+      w.wl(s"actual enum class $name(val jsValue: Int) {")
+      for ((o, idx) <- normalEnumOptions(e).zipWithIndex) {
+        val value = if (e.flags) s"(1 shl $idx)" else idx.toString
+        w.wl(s"    ${idJava.enum(o.ident)}($value),")
+      }
+      w.wl("}")
+      w.wl(s"fun ${name}ToJs(value: $name): dynamic = value.jsValue")
+      w.wl(s"fun ${name}FromJs(value: dynamic): $name = $name.entries.firstOrNull { it.jsValue == (value as Number).toInt() }")
+      w.wl(s"""    ?: throw IllegalArgumentException("Unknown $name value: " + value)""")
+    })
+  }
+
+  private def generateJsInterface(folder: File, td: TypeDecl, i: Interface, classKind: Boolean): Unit = {
+    val name = kmpTypeName(td)
+    val tp = typeParamDecl(td.params)
+    val funTp = if (tp.isEmpty) "" else tp + " "
+    val staticType = spec.wasmNamespace.map(_ + ".").getOrElse("") + idJs.ty(td.ident)
+    def writeMethod(w: IndentWriter, m: Interface.Method, modifier: String, receiver: String): Unit = {
+      w.wl(s"$modifier fun ${idJava.method(m.ident)}(${methodParams(m).mkString(", ")}): ${kmpReturnType(m.ret)} {")
+      w.increase()
+      val args = m.params.map(p => toJs(p.ty.resolved, idJava.local(p.ident)))
+      val call = s"""$receiver["${idJs.method(m.ident)}"](${args.mkString(", ")})"""
+      m.ret match {
+        case Some(ret) => w.wl(s"val result = $call"); w.wl(s"return ${fromJs(ret.resolved, "result")}")
+        case None => w.wl(call)
+      }
+      w.decrease(); w.wl("}")
+    }
+    writeKotlinFile(folder, s"$name.kt", td.origin, w => {
+      if (classKind) {
+        w.wl(s"actual class $name$tp actual constructor(nativeHandle: Any) {")
+        w.increase()
+        w.wl("internal val native: dynamic = nativeHandle")
+        for (m <- i.methods if !m.static) writeMethod(w, m, "actual", "native")
+        if (i.consts.nonEmpty || i.methods.exists(_.static)) {
+          w.wl("actual companion object {"); w.increase()
+          val receiver = staticType.split('.').foldLeft(s"$jsRuntime.requireModule()")((base, part) => base + "[\"" + part + "\"]")
+          for (c <- i.consts) w.wl(s"""actual val ${idJava.const(c.ident)}: ${kmpFieldType(c.ty.resolved)} get() = ${fromJs(c.ty.resolved, receiver + "[\"" + idJs.const(c.ident) + "\"]")}""")
+          for (m <- i.methods if m.static) writeMethod(w, m, "actual", receiver)
+          w.decrease(); w.wl("}")
+        }
+        w.decrease(); w.wl("}")
+        w.wl(s"fun $funTp${name}ToJs(value: $name$tp): dynamic = value.native")
+        w.wl(s"fun $funTp${name}FromJs(value: dynamic): $name$tp = $name(value as Any)")
+      } else {
+        w.wl(s"actual interface $name$tp {")
+        for (m <- i.methods) w.wl(s"    actual fun ${idJava.method(m.ident)}(${methodParams(m).mkString(", ")}): ${kmpReturnType(m.ret)}")
+        w.wl("}")
+        w.wl(s"private class ${name}JsWrapper$tp(val native: dynamic) : $name$tp {")
+        w.increase()
+        for (m <- i.methods) writeMethod(w, m, "override", "native")
+        w.decrease(); w.wl("}")
+        w.wl(s"fun $funTp${name}FromJs(value: dynamic): $name$tp = ${name}JsWrapper(value)")
+        w.wl(s"fun $funTp${name}ToJs(value: $name$tp): dynamic {")
+        w.increase()
+        w.wl(s"if (value is ${name}JsWrapper$tp) return value.native")
+        w.wl(s"""return $jsRuntime.proxy(value, "$name") {"""); w.increase()
+        w.wl("val result = js(\"({})\")")
+        for (m <- i.methods) {
+          val params = m.params.indices.map(n => s"p$n: dynamic").mkString(", ")
+          val args = m.params.zipWithIndex.map { case (p, n) => fromJs(p.ty.resolved, s"p$n") }
+          w.wl(s"""result["${idJs.method(m.ident)}"] = { $params${if (params.nonEmpty) " ->" else ""}""")
+          w.increase()
+          val call = s"value.${idJava.method(m.ident)}(${args.mkString(", ")})"
+          m.ret match {
+            case Some(ret) => w.wl(s"val returned = $call"); w.wl(toJs(ret.resolved, "returned"))
+            case None => w.wl(call)
+          }
+          w.decrease(); w.wl("}")
+        }
+        w.wl("result"); w.decrease(); w.wl("}")
+        w.decrease(); w.wl("}")
+      }
+    })
   }
 
   private def kmpType(tm: MExpr): String = {
