@@ -11,6 +11,7 @@ import scala.collection.mutable
 
 class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
 
+  private lazy val wasm = new KotlinKmpWasmGenerator(spec, this)
   private val kotlinMarshal = new KotlinMarshal(spec)
   private val objcMarshal = new ObjcMarshal(spec)
   private val iosModule: String = spec.kotlinKmpIosModule.getOrElse(spec.moduleName)
@@ -23,6 +24,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
   private def syntheticIdent(name: String): Ident = Ident(name, syntheticFile, Loc(syntheticFile, 0, 0))
 
   override def generate(idl: Seq[TypeDecl]) {
+    spec.kotlinKmpWasmOutFolder.foreach(wasm.generateRuntime)
     spec.kotlinKmpJsOutFolder.foreach(generateJsRuntime)
     for (td <- selectDecls(idl)) {
       td.body match {
@@ -70,7 +72,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     case _ => td.ident.name
   }
 
-  private def kmpTypeName(td: TypeDecl): String = kmpBridgePrefix + idJava.ty(canonicalName(td))
+  private[djinni] def kmpTypeName(td: TypeDecl): String = kmpBridgePrefix + idJava.ty(canonicalName(td))
   private def kmpObjcName(td: TypeDecl): String = kmpObjcNamePrefix + idJava.ty(canonicalName(td))
   private def externKmpPackage(e: MExtern): String = e.kmp.pkg
   private def externKmpBridgePrefix(e: MExtern): String =
@@ -272,6 +274,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     val origin = td.origin
     val conversionImports = conversionImportsForRecord(r)
 
+    spec.kotlinKmpWasmOutFolder.foreach(folder => wasm.generateRecord(folder, td, r))
     spec.kotlinKmpJsOutFolder.foreach(folder => generateJsRecord(folder, td, r))
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
@@ -405,6 +408,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     val name = kmpTypeName(td)
     val origin = td.origin
 
+    spec.kotlinKmpWasmOutFolder.foreach(folder => wasm.generateEnum(folder, td, e))
     spec.kotlinKmpJsOutFolder.foreach(folder => generateJsEnum(folder, td, e))
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
@@ -490,6 +494,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     val classKind = !kmpImplementable || hasStatics
     val conversionImports = conversionImportsForInterface(i)
 
+    spec.kotlinKmpWasmOutFolder.foreach(folder => wasm.generateInterface(folder, td, i, classKind))
     spec.kotlinKmpJsOutFolder.foreach(folder => generateJsInterface(folder, td, i, classKind))
     spec.kotlinKmpCommonOutFolder.foreach(folder => {
       writeKotlinFile(folder, s"$name.kt", origin, w => {
@@ -821,7 +826,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
       }
   }
 
-  private def kmpFieldType(tm: MExpr): String = {
+  private[djinni] def kmpFieldType(tm: MExpr): String = {
     val name = kmpType(tm)
     if (kotlinMarshal.isEnumFlags(tm)) s"EnumSet<$name>" else name
   }
@@ -856,9 +861,9 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     }
   }
 
-  private def kmpReturnType(ret: Option[TypeRef]): String = ret.fold("Unit")(t => kmpFieldType(t.resolved))
+  private[djinni] def kmpReturnType(ret: Option[TypeRef]): String = ret.fold("Unit")(t => kmpFieldType(t.resolved))
 
-  private def methodParams(m: Interface.Method): Seq[String] = {
+  private[djinni] def methodParams(m: Interface.Method): Seq[String] = {
     m.params.map(p => s"${idJava.local(p.ident)}: ${kmpFieldType(p.ty.resolved)}")
   }
 
@@ -1095,7 +1100,7 @@ class KotlinKmpGenerator(spec: Spec) extends Generator(spec) {
     })
   }
 
-  private def jsConversionName(tm: MExpr): String = tm.base match {
+  private[djinni] def jsConversionName(tm: MExpr): String = tm.base match {
     case e: MExtern => externKmpFqTypeName(e)
     case d: MDef => kmpBridgePrefix + idJava.ty(d.name)
     case _ => throw new AssertionError("Expected named JS type")

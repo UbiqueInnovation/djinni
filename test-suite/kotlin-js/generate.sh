@@ -5,4 +5,5 @@ cd "$(dirname "$0")"
 ../../src/run-assume-built --idl interop.djinni \
   --kotlin-kmp-common-out generated/commonMain \
   --kotlin-kmp-js-out generated/jsMain \
+  --kotlin-kmp-wasm-out generated/wasmJsMain \
   --kotlin-kmp-package test.interop --kotlin-kmp-bridge-prefix KM

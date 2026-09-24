@@ -13,3 +13,10 @@ converted rather than exposing Kotlin implementation objects to JavaScript.
 This fixture checks the WASM ABI for binary data, primitive typed arrays,
 64-bit integers, sets, maps, and nested optional values. Application-level
 map and callback tests live in OpenMobileMaps `maps-core/kmp/jsTest`.
+
+
+The same fixture now has a Kotlin/Wasm target. `generate.sh` also uses
+`--kotlin-kmp-wasm-out`; run `gradle wasmJsNodeTest jsNodeTest` to validate both
+backends. The Wasm backend uses typed `JsAny` imports and
+`<prefix>DjinniWasm.initialize(module)`. It emits independent actual declarations,
+so it does not expose Kotlin/JS `dynamic` types to Wasm consumers.
