@@ -1,0 +1,8 @@
+values = record {
+    bytes: binary;
+    ints: array<i32>;
+    longs: array<i64>;
+    doubles: array<f64>;
+    names: set<string>;
+    nested: map<string, list<optional<i64>>>;
+}
