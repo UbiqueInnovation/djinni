@@ -87,13 +87,11 @@ em::val getCppProxyClass() {
 }
 
 em::val getWasmMemoryBuffer() {
-    // When ALLOW_MEMORY_GROWTH is turned on, the WebAssembly.Memory object's underlying buffer changes as it grows,
-    // and the HEAP* views in the Emscripten module object get reset to new views over the bigger memory buffer.
-    // In this mode, capturing the heap here as a static variable is incorrect, and leads to runtime errors.
-    // https://github.com/emscripten-core/emscripten/blob/3.1.7/src/settings.js#L194-L207 is the growth setting
-    // https://github.com/emscripten-core/emscripten/blob/3.1.7/src/library.js#L127 is the call to reset the views after grow()
-    // https://github.com/emscripten-core/emscripten/blob/3.1.7/src/preamble.js#L269-L286 is where the views get reset
-    return em::val::module_property("HEAPU32")["buffer"];
+    // When ALLOW_MEMORY_GROWTH is turned on, the WebAssembly.Memory object's underlying buffer changes as it grows.
+    // In this mode, capturing the buffer here as a static variable is incorrect, and leads to runtime errors.
+    // An embind memory view always targets the current buffer through Emscripten's internal heap views, so the
+    // module does not have to export HEAPU8/HEAPU32 (recent Emscripten versions no longer export them by default).
+    return em::val(em::typed_memory_view(0, static_cast<const uint8_t*>(nullptr)))["buffer"];
 }
 
 em::val DataObject::createJsObject() {
@@ -158,14 +156,6 @@ EM_JS(void, djinni_init_wasm, (), {
             return function(err) {
                 Module.resolveNativePromise(func, pNativePromise, null, err);
             };
-        };
-
-        Module.writeNativeMemory = function(src, nativePtr) {
-            var srcByteView = new Uint8Array(src.buffer, src.byteOffset, src.byteLength);
-            Module.HEAPU8.set(srcByteView, nativePtr);
-        };
-        Module.readNativeMemory = function(cls, nativePtr, nativeSize) {
-            return new cls(Module.HEAPU8.buffer.slice(nativePtr, nativePtr + nativeSize));
         };
 
         Module.protobuf = {};
