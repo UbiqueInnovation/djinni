@@ -172,9 +172,11 @@ EM_JS(void, djinni_init_wasm, (), {
         };
 });
 
+EM_JS_DEPS(djinni_register_name_in_ns_deps, "$UTF8ToString");
+
 EM_JS(void, djinni_register_name_in_ns, (const char* prefixedName, const char* namespacedName), {
-        prefixedName = readLatin1String(prefixedName);
-        namespacedName = readLatin1String(namespacedName);
+        prefixedName = UTF8ToString(prefixedName);
+        namespacedName = UTF8ToString(namespacedName);
         let parts = namespacedName.split('.');
         let name = parts.pop();
         let ns = parts.reduce(function(path, part) {
