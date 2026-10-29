@@ -44,10 +44,15 @@ public:
             allocate(0);
         }
     }
+    // Buffers from allocateWasmBuffer() are shared without copying. Other typed arrays
+    // are copied into module memory, so in-place C++ writes are not visible to them.
     explicit DataRefWasm(PlatformObject data) {
-        auto buffer = data["buffer"];
-        assert(buffer == getWasmMemoryBuffer());
-        _data = data;
+        if (data["buffer"] == getWasmMemoryBuffer()) {
+            _data = data;
+        } else {
+            allocate(data["byteLength"].as<size_t>());
+            copyToNativeMemory(data, mutableBuf());
+        }
     }
     DataRefWasm(const DataRefWasm&) = delete;
 
