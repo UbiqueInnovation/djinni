@@ -36,6 +36,9 @@
       -->
     <script>
       Module().then(module => {
+          // Marshalling must work without exported heap views (newer Emscripten omits them).
+          delete module.HEAPU8;
+          delete module.HEAPU32;
           console.log(module);
           runTests(module, allTests);
       })

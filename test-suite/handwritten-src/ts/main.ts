@@ -20,5 +20,8 @@ import "./WcharTest"
 
 declare function Module(): Promise<DjinniModule>;
 Module().then(m => {
+    // Marshalling must work without exported heap views (newer Emscripten omits them).
+    delete (m as any).HEAPU8;
+    delete (m as any).HEAPU32;
     runTests(m, allTests);
 })

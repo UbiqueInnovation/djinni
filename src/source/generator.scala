@@ -49,6 +49,8 @@ package object generatorTools {
                    kotlinKmpCommonOutFolder: Option[File],
                    kotlinKmpAndroidOutFolder: Option[File],
                    kotlinKmpIosOutFolder: Option[File],
+                   kotlinKmpJsOutFolder: Option[File],
+                   kotlinKmpWasmOutFolder: Option[File],
                    kotlinKmpPackage: Option[String],
                    kotlinKmpIosModule: Option[String],
                    kotlinKmpBridgePrefix: Option[String],
@@ -287,12 +289,14 @@ package object generatorTools {
       }
       val hasKotlinKmp = spec.kotlinKmpCommonOutFolder.isDefined ||
         spec.kotlinKmpAndroidOutFolder.isDefined ||
-        spec.kotlinKmpIosOutFolder.isDefined
+        spec.kotlinKmpIosOutFolder.isDefined || spec.kotlinKmpJsOutFolder.isDefined || spec.kotlinKmpWasmOutFolder.isDefined
       if (hasKotlinKmp) {
         if (!spec.skipGeneration) {
           spec.kotlinKmpCommonOutFolder.foreach(createFolder("Kotlin KMP common", _))
           spec.kotlinKmpAndroidOutFolder.foreach(createFolder("Kotlin KMP android", _))
           spec.kotlinKmpIosOutFolder.foreach(createFolder("Kotlin KMP ios", _))
+          spec.kotlinKmpJsOutFolder.foreach(createFolder("Kotlin KMP js", _))
+          spec.kotlinKmpWasmOutFolder.foreach(createFolder("Kotlin KMP wasm", _))
         }
         new KotlinKmpGenerator(spec).generate(idl)
       }

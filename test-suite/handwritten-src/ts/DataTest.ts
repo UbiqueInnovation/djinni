@@ -21,6 +21,13 @@ class DataTest extends TestCase {
         assertArrayEq(input, output);
     }
 
+    testSendHostBuffer() {
+        var input = [0, 1, 2, 3];
+        this.test.sendData(new Uint8Array(input));
+        var output = this.test.retriveAsBin();
+        assertArrayEq(input, output);
+    }
+
     testSendMutable() {
         var input = [0, 1, 2, 3];
         var buf = this.m.allocateWasmBuffer(4);

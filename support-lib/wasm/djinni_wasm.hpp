@@ -41,6 +41,20 @@ extern em::val getCppProxyFinalizerRegistry();
 extern em::val getCppProxyClass();
 extern em::val getWasmMemoryBuffer();
 
+// Byte copies between JS typed arrays and C++ memory. Embind memory views resolve
+// against Emscripten's internal heap, so the module needs no exported HEAP* view.
+inline void copyToNativeMemory(const em::val& src, void* dst) {
+    static auto uint8ArrayClass = em::val::global("Uint8Array");
+    const auto size = src["byteLength"].as<size_t>();
+    em::val(em::typed_memory_view(size, static_cast<uint8_t*>(dst)))
+        .call<void>("set", uint8ArrayClass.new_(src["buffer"], src["byteOffset"], size));
+}
+// Returns an instance of `arrayClass` backed by a JS-owned (non-shared) copy.
+inline em::val copyFromNativeMemory(const em::val& arrayClass, const void* src, size_t size) {
+    em::val bytes = em::val(em::typed_memory_view(size, static_cast<const uint8_t*>(src))).call<em::val>("slice");
+    return arrayClass.new_(bytes["buffer"]);
+}
+
 template<typename T>
 class InstanceTracker {
 #ifdef DJINNI_WASM_TRACK_INSTANCES
@@ -291,8 +305,7 @@ public:
             ret.ParseFromArray(pbytes, static_cast<int>(length));
         } else {
             std::vector<uint8_t> cbuf(length);
-            static em::val writeNativeMemory = em::val::module_property("writeNativeMemory");
-            writeNativeMemory(bytes, reinterpret_cast<uint32_t>(cbuf.data()));
+            copyToNativeMemory(bytes, cbuf.data());
             ret.ParseFromArray(cbuf.data(), static_cast<int>(length));
         }
         return ret;
@@ -303,10 +316,8 @@ public:
         std::vector<uint8_t> cbuf(c.ByteSizeLong());
         c.SerializeToArray(cbuf.data(), static_cast<int>(cbuf.size()));
 
-        unsigned addr = reinterpret_cast<unsigned>(cbuf.data());
-        unsigned size = static_cast<unsigned>(cbuf.size());
-        static auto uint8ArrayClass = em::val::global("Uint8Array");
-        em::val array = uint8ArrayClass.new_(::djinni::getWasmMemoryBuffer(), addr, size);
+        // decode() reads synchronously, so a view over the temporary buffer suffices.
+        em::val array(em::typed_memory_view(cbuf.size(), cbuf.data()));
         em::val jsClass = JsProto::resolve();
         return jsClass.call<em::val>("decode", array);
     }
@@ -335,14 +346,11 @@ struct PrimitiveArray {
     static CppType toCpp(const JsType& j) {
         const size_t length = j["length"].as<size_t>();
         std::vector<typename T::CppType> c(length);
-        static em::val writeNativeMemory = em::val::module_property("writeNativeMemory");
-        writeNativeMemory(j, reinterpret_cast<uint32_t>(c.data()));
+        copyToNativeMemory(j, c.data());
         return c;
     }
     static JsType fromCpp(const CppType& c) {
-        static em::val readNativeMemory = em::val::module_property("readNativeMemory");
-        return readNativeMemory(U::getArrayClass(), reinterpret_cast<uint32_t>(c.data()),
-                                static_cast<uint32_t>(c.size() * sizeof(typename T::CppType)));
+        return copyFromNativeMemory(U::getArrayClass(), c.data(), c.size() * sizeof(typename T::CppType));
     }
 };
 template <>

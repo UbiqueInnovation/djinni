@@ -5,7 +5,7 @@ namespace testsuite {
 using namespace djinni;
 
 class DataRefTestCpp : public ::testsuite::DataRefTest {
-    DataRef _data;
+    DataRef _data{size_t{0}};
 public:
     void sendData(const DataRef& data) override {
         _data = data;
@@ -16,8 +16,10 @@ public:
     }
 
     void sendMutableData(const DataRef& data) override {
-        auto buf = data.mutableBuf();
-        std::reverse(buf, buf + data.len());
+        // Copies share the underlying buffer, so writes stay visible to the caller.
+        DataRef shared = data;
+        auto buf = shared.mutableBuf();
+        std::reverse(buf, buf + shared.len());
     }
 
     DataRef generateData() override {
